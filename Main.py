@@ -7,46 +7,105 @@ import random
 import time
 
 # Grid settings
-GRID_SIZE = 10
-CELL_SIZE = 40
-GRID_COLOR = "black"
-ACTIVE_COLOR = "orange"
-INACTIVE_COLOR = "white"
-OBSTACLE_COLOR = "gray"
-OUTLINE_COLOR = "green"
+DEFAULT_GRID_SIZE = 10  # Default grid size
+MAX_CANVAS_SIZE = 600   # Maximum canvas size in pixels
+# Colors - Modern UI Color Scheme
+GRID_COLOR = "#95A5A6"  # Medium gray
+ACTIVE_COLOR = "#FF9500"  # Bright orange
+INACTIVE_COLOR = "#F5F5F5"  # Light gray
+OBSTACLE_COLOR = "#2C3E50"  # Dark blue-gray
+OUTLINE_COLOR = "#2ECC71"  # Bright green
+PATH_COLOR = "#3498DB"  # Bright blue
+MINIMAX_COLOR = "#9B59B6"  # Purple
+ALPHA_BETA_COLOR = "#E74C3C"  # Red
+EXPECTIMAX_COLOR = "#1ABC9C"  # Teal
+
+# UI Colors
+HEADER_BG = "#34495E"  # Dark blue-gray
+HEADER_FG = "white"
+BUTTON_BG = "#3498DB"  # Blue
+BUTTON_FG = "white"
+BUTTON_ACTIVE_BG = "#2980B9"  # Darker blue
+CANVAS_BG = "#ECF0F1"  # Very light gray
+FRAME_BG = "#F8F9FA"  # Off-white
 
 
 class InteractiveGrid:
     def __init__(self, root):
         self.root = root
-        self.root.title("Form a Shape with Performance Metrics")
+        self.root.title("Interactive Grid - Shape Formation Simulator")
+        self.root.configure(bg=FRAME_BG)
+
+        # Add a title header
+        title_frame = tk.Frame(root, bg=HEADER_BG, padx=10, pady=10)
+        title_frame.pack(fill=tk.X)
+
+        title_label = tk.Label(title_frame,
+                              text="Interactive Grid - Shape Formation Simulator",
+                              font=("Arial", 16, "bold"),
+                              bg=HEADER_BG,
+                              fg=HEADER_FG)
+        title_label.pack()
 
         # Initialize speed_var first, before anything tries to use it
         self.speed_var = tk.IntVar(value=100)
 
+        # Set the movement speed from the speed_var
+        self.movement_speed = self.speed_var.get()
+
+        # Add a trace to update movement_speed when speed_var changes
+        self.speed_var.trace_add("write", self.update_movement_speed)
+
+        # Initialize grid size variable
+        self.grid_size = DEFAULT_GRID_SIZE
+        self.grid_size_var = tk.IntVar(value=self.grid_size)
+
+        # Initialize agent count variable
+        self.agent_count = 20  # Default number of agents
+        self.agent_count_var = tk.IntVar(value=self.agent_count)
+
+        # Calculate cell size based on grid dimensions
+        self.calculate_cell_size()
 
 
-        # Main container
-        main_frame = Frame(root)
-        main_frame.pack(padx=10, pady=10)
+        # Main container with modern styling
+        main_frame = Frame(root, bg=FRAME_BG)
+        main_frame.pack(padx=15, pady=15, fill=tk.BOTH, expand=True)
 
-        # Left frame for the grid
-        left_frame = Frame(main_frame)
-        left_frame.pack(side=tk.LEFT, padx=10)
+        # Left frame for the grid with a border
+        left_frame = Frame(main_frame, bg=HEADER_BG, bd=2, relief=tk.RIDGE)
+        left_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
-        # Right frame for controls
-        right_frame = Frame(main_frame)
-        right_frame.pack(side=tk.LEFT, padx=10, fill=tk.Y)
+        # Canvas for the grid with a nice background
+        self.canvas = tk.Canvas(left_frame, width=MAX_CANVAS_SIZE, height=MAX_CANVAS_SIZE,
+                              bg=CANVAS_BG, bd=0, highlightthickness=0)
+        self.canvas.pack(padx=5, pady=5)
 
-        # Canvas for the grid
-        self.canvas = tk.Canvas(left_frame, width=GRID_SIZE * CELL_SIZE, height=GRID_SIZE * CELL_SIZE)
-        self.canvas.pack()
+        # Right frame for controls with a border and title
+        right_outer_frame = Frame(main_frame, bg=FRAME_BG, bd=2, relief=tk.RIDGE)
+        right_outer_frame.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+        # Add a control panel header
+        control_header = Frame(right_outer_frame, bg=HEADER_BG, padx=5, pady=5)
+        control_header.pack(fill=tk.X)
+
+        control_title = tk.Label(control_header, text="Control Panel",
+                             font=("Arial", 12, "bold"), bg=HEADER_BG, fg=HEADER_FG)
+        control_title.pack()
+
+        # Inner frame for controls
+        right_frame = Frame(right_outer_frame, bg=FRAME_BG, padx=10, pady=10)
+        right_frame.pack(fill=tk.BOTH, expand=True)
 
         # Initialize data structures
         self.cells = {}
         self.active_cells = []
         self.reserved_cells = set()
         self.visited_cells = set()
+
+        # Custom shape variables
+        self.custom_shape_mode = False
+        self.custom_shape = []
 
         #Parallel Movement
         self.moving_cells = {}
@@ -58,11 +117,18 @@ class InteractiveGrid:
         self.max_attempts = 3
         self.step_counter = 0
 
+        # Agent Control Mode (centralized or distributed) - COMMENTED OUT FOR NOW
+        # self.centralized_mode = True  # Default to centralized control
+        # self.centralized_var = tk.BooleanVar(value=True)
+
         # Performance metrics
         self.metrics = {
             "A*": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
             "BFS": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
-            "DFS": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0}
+            "DFS": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
+            "Minimax": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
+            "Alpha-Beta": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0, "pruned": 0},
+            "Expectimax": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0, "chance_nodes": 0}
         }
         self.current_algorithm = "A*"
         self.total_cells_to_fill = 0
@@ -92,20 +158,86 @@ class InteractiveGrid:
 
     def create_controls(self, parent):
         """Create UI controls."""
+        # Grid size controls
+        grid_size_frame = Frame(parent)
+        grid_size_frame.pack(pady=5, fill=tk.X)
+
+        tk.Label(grid_size_frame, text="Grid Size:").pack(side=tk.LEFT)
+
+        # Create an entry field for grid size
+        grid_size_entry = tk.Entry(grid_size_frame, textvariable=self.grid_size_var, width=5)
+        grid_size_entry.pack(side=tk.LEFT, padx=5)
+
+        # Apply button for grid size changes with modern styling
+        apply_size_btn = tk.Button(grid_size_frame, text="Apply", command=self.apply_grid_size,
+                                  bg=BUTTON_BG, fg=BUTTON_FG, activebackground=BUTTON_ACTIVE_BG,
+                                  relief=tk.RAISED, padx=10)
+        apply_size_btn.pack(side=tk.LEFT, padx=5)
+
+        # Agent count controls
+        agent_count_frame = Frame(parent)
+        agent_count_frame.pack(pady=5, fill=tk.X)
+
+        tk.Label(agent_count_frame, text="Agent Count:").pack(side=tk.LEFT)
+
+        # Create an entry field for agent count
+        agent_count_entry = tk.Entry(agent_count_frame, textvariable=self.agent_count_var, width=5)
+        agent_count_entry.pack(side=tk.LEFT, padx=5)
+
+        # Apply button for agent count changes with modern styling
+        apply_agent_btn = tk.Button(agent_count_frame, text="Apply", command=self.apply_agent_count,
+                                   bg=BUTTON_BG, fg=BUTTON_FG, activebackground=BUTTON_ACTIVE_BG,
+                                   relief=tk.RAISED, padx=10)
+        apply_agent_btn.pack(side=tk.LEFT, padx=5)
+
+        # Movement speed controls
+        speed_frame = Frame(parent)
+        speed_frame.pack(pady=5, fill=tk.X)
+
+        tk.Label(speed_frame, text="Movement Speed:").pack(side=tk.LEFT)
+
+        # Create a scale (slider) for movement speed
+        # Lower values = faster movement (less delay)
+        speed_scale = Scale(speed_frame, from_=10, to=500, orient=tk.HORIZONTAL,
+                           variable=self.speed_var, length=150)
+        speed_scale.pack(side=tk.LEFT, padx=5)
+
+        # Add labels for the speed range
+        tk.Label(speed_frame, text="Fast").pack(side=tk.LEFT)
+        tk.Label(speed_frame, text="Slow").pack(side=tk.RIGHT)
+
         # Shape selection
         shape_frame = Frame(parent)
         shape_frame.pack(pady=5, fill=tk.X)
 
         tk.Label(shape_frame, text="Shape:").pack(side=tk.LEFT)
 
-        self.rectangle_btn = tk.Button(shape_frame, text="Rectangle", command=self.set_rectangle_shape)
+        # Shape buttons with modern styling
+        button_style = {
+            "bg": BUTTON_BG,
+            "fg": BUTTON_FG,
+            "activebackground": BUTTON_ACTIVE_BG,
+            "relief": tk.RAISED,
+            "padx": 10
+        }
+
+        self.rectangle_btn = tk.Button(shape_frame, text="Rectangle", command=self.set_rectangle_shape, **button_style)
         self.rectangle_btn.pack(side=tk.LEFT, padx=2)
 
-        self.triangle_btn = tk.Button(shape_frame, text="Triangle", command=self.set_triangle_shape)
+        self.triangle_btn = tk.Button(shape_frame, text="Triangle", command=self.set_triangle_shape, **button_style)
         self.triangle_btn.pack(side=tk.LEFT, padx=2)
 
-        self.circle_btn = tk.Button(shape_frame, text="Circle", command=self.set_circle_shape)
+        self.circle_btn = tk.Button(shape_frame, text="Circle", command=self.set_circle_shape, **button_style)
         self.circle_btn.pack(side=tk.LEFT, padx=2)
+
+        self.custom_btn = tk.Button(shape_frame, text="Custom Shape", command=self.start_custom_shape, **button_style)
+        self.custom_btn.pack(side=tk.LEFT, padx=2)
+
+        # Create a finish button that will be hidden initially
+        self.finish_custom_btn = tk.Button(shape_frame, text="Finish Custom Shape",
+                                         command=self.finish_custom_shape, **button_style)
+        self.finish_custom_btn.pack(side=tk.LEFT, padx=2)
+        self.finish_custom_btn.pack_forget()  # Hide initially
 
         # Algorithm selection
         algo_frame = Frame(parent)
@@ -114,77 +246,202 @@ class InteractiveGrid:
         tk.Label(algo_frame, text="Algorithm:").pack(side=tk.LEFT)
 
         self.algorithm_var = StringVar(value="A*")
-        algorithms = ["A*", "BFS", "DFS"]
+        algorithms = ["A*", "BFS", "DFS", "Minimax", "Alpha-Beta", "Expectimax"]
         algo_menu = OptionMenu(algo_frame, self.algorithm_var, *algorithms)
         algo_menu.pack(side=tk.LEFT, padx=5)
-        self.algorithm_var.trace("w", self.on_algorithm_change)
+        self.algorithm_var.trace_add("write", self.on_algorithm_change)
 
-        # Action buttons
-        btn_frame = Frame(parent)
-        btn_frame.pack(pady=10, fill=tk.X)
+        # Create a frame for movement options
+        movement_options_frame = Frame(parent)
+        movement_options_frame.pack(pady=5, fill=tk.X)
 
-        self.do_shape_btn = tk.Button(btn_frame, text="Do the Shape", command=self.start_movement)
+        tk.Label(movement_options_frame, text="Movement Options:").pack(side=tk.LEFT)
+
+        # Parallel movement option
+        parallel_check = tk.Checkbutton(movement_options_frame, text="Parallel Movement",
+                                       variable=self.parallel_var,
+                                       command=self.toggle_parallel_mode)
+        parallel_check.pack(side=tk.LEFT, padx=5)
+
+        # Agent control mode option - COMMENTED OUT FOR NOW
+        # centralized_check = tk.Checkbutton(movement_options_frame, text="Centralized Control",
+        #                                  variable=self.centralized_var,
+        #                                  command=self.toggle_centralized_mode)
+        # centralized_check.pack(side=tk.LEFT, padx=5)
+
+        # Action buttons with section header
+        action_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
+        action_header.pack(fill=tk.X, pady=(10, 0))
+
+        tk.Label(action_header, text="Actions", font=("Arial", 10, "bold"),
+                bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
+
+        btn_frame = Frame(parent, bg=FRAME_BG)
+        btn_frame.pack(pady=5, fill=tk.X)
+
+        # Action buttons with modern styling
+        action_style = button_style.copy()
+        action_style["font"] = ("Arial", 10, "bold")
+
+        self.do_shape_btn = tk.Button(btn_frame, text="Do the Shape", command=self.start_movement,
+                                     **action_style)
         self.do_shape_btn.pack(side=tk.LEFT, padx=5)
 
-        self.reset_btn = tk.Button(btn_frame, text="Reset", command=self.reset_grid)
+        self.reset_btn = tk.Button(btn_frame, text="Reset", command=self.reset_grid,
+                                  **action_style)
         self.reset_btn.pack(side=tk.LEFT, padx=5)
 
-        # Random obstacles button
-        obstacles_frame = Frame(parent)
+        # Obstacles section with header
+        obstacles_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
+        obstacles_header.pack(fill=tk.X, pady=(10, 0))
+
+        tk.Label(obstacles_header, text="Obstacles", font=("Arial", 10, "bold"),
+                bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
+
+        obstacles_frame = Frame(parent, bg=FRAME_BG)
         obstacles_frame.pack(pady=5, fill=tk.X)
 
+        # Obstacle buttons with modern styling
         self.random_obstacles_button = tk.Button(obstacles_frame, text="Random Obstacles",
-                                                 command=self.add_random_obstacles)
+                                               command=self.add_random_obstacles, **button_style)
         self.random_obstacles_button.pack(side=tk.LEFT, padx=5)
 
         self.clear_obstacles_button = tk.Button(obstacles_frame, text="Clear Obstacles",
-                                                command=self.clear_obstacles)
+                                              command=self.clear_obstacles, **button_style)
         self.clear_obstacles_button.pack(side=tk.LEFT, padx=5)
 
-        # Status text
-        status_frame = Frame(parent)
+        # Status section with header
+        status_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
+        status_header.pack(fill=tk.X, pady=(10, 0))
+
+        tk.Label(status_header, text="Status", font=("Arial", 10, "bold"),
+                bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
+
+        status_frame = Frame(parent, bg=FRAME_BG, bd=1, relief=tk.SUNKEN)
         status_frame.pack(pady=5, fill=tk.BOTH, expand=True)
 
-        tk.Label(status_frame, text="Status:").pack(anchor=tk.W)
-
-        self.status_text = scrolledtext.ScrolledText(status_frame, width=30, height=10, wrap=tk.WORD)
-        self.status_text.pack(fill=tk.BOTH, expand=True)
+        self.status_text = scrolledtext.ScrolledText(status_frame, width=30, height=10, wrap=tk.WORD,
+                                                   bg=CANVAS_BG, font=("Consolas", 9))
+        self.status_text.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self.status_text.config(state=tk.DISABLED)
 
-        # Metrics display
-        metrics_frame = Frame(parent)
-        metrics_frame.pack(pady=10, fill=tk.X)
+        # Metrics section with header
+        metrics_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
+        metrics_header.pack(fill=tk.X, pady=(10, 0))
 
-        tk.Label(metrics_frame, text="Performance Metrics:", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        tk.Label(metrics_header, text="Performance Metrics", font=("Arial", 10, "bold"),
+                bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
 
-        self.metrics_text = scrolledtext.ScrolledText(metrics_frame, width=30, height=15, wrap=tk.WORD)
-        self.metrics_text.pack(fill=tk.BOTH, expand=True)
+        metrics_frame = Frame(parent, bg=FRAME_BG, bd=1, relief=tk.SUNKEN)
+        metrics_frame.pack(pady=5, fill=tk.BOTH, expand=True)
+
+        self.metrics_text = scrolledtext.ScrolledText(metrics_frame, width=30, height=15, wrap=tk.WORD,
+                                                    bg=CANVAS_BG, font=("Consolas", 9))
+        self.metrics_text.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self.metrics_text.config(state=tk.DISABLED)
 
-        # Compare button
-        compare_frame = Frame(parent)
-        compare_frame.pack(pady=5, fill=tk.X)
+
+
+        # Compare button with special styling
+        compare_frame = Frame(parent, bg=FRAME_BG)
+        compare_frame.pack(pady=10, fill=tk.X)
+
+        compare_style = {
+            "bg": "#E74C3C",  # Red
+            "fg": "white",
+            "activebackground": "#C0392B",  # Darker red
+            "relief": tk.RAISED,
+            "padx": 10,
+            "pady": 5,
+            "font": ("Arial", 10, "bold")
+        }
 
         self.compare_btn = tk.Button(compare_frame, text="Compare All Algorithms",
-                                     command=self.compare_algorithms)
+                                   command=self.compare_algorithms, **compare_style)
         self.compare_btn.pack(side=tk.LEFT, padx=5)
 
-        # Parallel movement option
-        parallel_frame = tk.Frame(parent)
-        parallel_frame.pack(pady=5, fill=tk.X)
-
-        parallel_check = tk.Checkbutton(parallel_frame, text="Parallel Movement",
-                                        variable=self.parallel_var,
-                                        command=self.toggle_parallel_mode)
-        parallel_check.pack(side=tk.LEFT, padx=5)
 
 
+
+
+    def update_movement_speed(self, *args):
+        """Update the movement speed when the slider changes."""
+        self.movement_speed = self.speed_var.get()
+        self.update_status(f"Movement speed set to {self.movement_speed} ms")
+
+
+
+    def calculate_cell_size(self):
+        """Calculate the cell size based on the grid dimensions."""
+        # Calculate cell size to fit the grid within MAX_CANVAS_SIZE
+        self.cell_size = min(MAX_CANVAS_SIZE // self.grid_size, 40)  # Max cell size is 40 pixels
 
     def toggle_parallel_mode(self):
         """Toggle between sequential and parallel movement modes."""
         self.parallel_mode = self.parallel_var.get()
         mode_name = "Parallel" if self.parallel_mode else "Sequential"
         self.update_status(f"Movement mode changed to {mode_name}")
+
+    # def toggle_centralized_mode(self):
+    #     """Toggle between centralized and distributed agent control."""
+    #     self.centralized_mode = self.centralized_var.get()
+    #     mode_name = "Centralized" if self.centralized_mode else "Distributed"
+    #     self.update_status(f"Agent control mode changed to {mode_name}")
+
+    def apply_grid_size(self):
+        """Apply the new grid size and reinitialize the grid."""
+        if self.movement_started:
+            self.update_status("Cannot change grid size while movement is in progress.")
+            return
+
+        try:
+            # Get the new grid size from the entry field
+            new_size = int(self.grid_size_var.get())
+
+            # Ensure grid size is at least 1
+            if new_size < 1:
+                self.update_status("Grid size must be at least 1.")
+                return
+
+            if new_size != self.grid_size:
+                self.grid_size = new_size
+
+                # Recalculate cell size based on new grid dimensions
+                self.calculate_cell_size()
+
+                # Canvas size remains fixed at MAX_CANVAS_SIZE
+
+                # Reinitialize the grid with the new size
+                self.initialize_grid()
+
+                self.update_status(f"Grid size changed to {self.grid_size}x{self.grid_size}.")
+        except ValueError:
+            self.update_status("Please enter a valid number for grid size.")
+
+    def apply_agent_count(self):
+        """Apply the new agent count and reinitialize the grid."""
+        if self.movement_started:
+            self.update_status("Cannot change agent count while movement is in progress.")
+            return
+
+        try:
+            # Get the new agent count from the entry field
+            new_count = int(self.agent_count_var.get())
+
+            # Ensure agent count is at least 1
+            if new_count < 1:
+                self.update_status("Agent count must be at least 1.")
+                return
+
+            if new_count != self.agent_count:
+                self.agent_count = new_count
+
+                # Reinitialize the grid with the new agent count
+                self.initialize_grid()
+
+                self.update_status(f"Agent count changed to {self.agent_count}.")
+        except ValueError:
+            self.update_status("Please enter a valid number for agent count.")
 
     def generate_layers(self):
         """Generate layers (outlines) for the target shape."""
@@ -201,8 +458,9 @@ class InteractiveGrid:
 
     def on_algorithm_change(self, *args):
         """Handle algorithm change."""
-        self.current_algorithm = self.algorithm_var.get()
-        self.update_status(f"Algorithm changed to {self.current_algorithm}")
+        algorithm = self.algorithm_var.get()
+        self.current_algorithm = algorithm
+        self.update_status(f"Algorithm changed to {algorithm}")
 
     def update_status(self, message):
         """Update status text."""
@@ -221,7 +479,12 @@ class InteractiveGrid:
         self.metrics_text.insert(tk.END, f"Current Algorithm: {algo}\n")
         self.metrics_text.insert(tk.END, f"------------------------\n")
 
-        if self.metrics[algo]["moves"] > 0:
+        # Check if the algorithm exists in metrics
+        if algo not in self.metrics:
+            # Add the algorithm to metrics
+            self.metrics[algo] = {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0}
+            self.metrics_text.insert(tk.END, "No data yet for this algorithm.\n")
+        elif self.metrics[algo]["moves"] > 0:
             avg_time = self.metrics[algo]["time"] / self.metrics[algo]["moves"]
             avg_explored = self.metrics[algo]["explored"] / self.metrics[algo]["moves"]
             avg_path = self.metrics[algo]["path_length"] / self.metrics[algo]["moves"]
@@ -236,6 +499,22 @@ class InteractiveGrid:
             self.metrics_text.insert(tk.END, f"Time: {self.metrics[algo]['time']:.4f}s (Avg: {avg_time:.4f}s)\n")
             self.metrics_text.insert(tk.END, f"Success rate: {success_rate:.1f}%\n")
 
+            # Show pruned nodes for Alpha-Beta
+            if algo == "Alpha-Beta" and "pruned" in self.metrics[algo]:
+                pruned = self.metrics[algo]["pruned"]
+                if pruned > 0:
+                    self.metrics_text.insert(tk.END, f"Nodes pruned: {pruned}\n")
+                    pruning_efficiency = (pruned / self.metrics[algo]['explored']) * 100
+                    self.metrics_text.insert(tk.END, f"Pruning efficiency: {pruning_efficiency:.2f}%\n")
+
+            # Show chance nodes for Expectimax
+            if algo == "Expectimax" and "chance_nodes" in self.metrics[algo]:
+                chance_nodes = self.metrics[algo]["chance_nodes"]
+                if chance_nodes > 0:
+                    self.metrics_text.insert(tk.END, f"Chance nodes: {chance_nodes}\n")
+                    chance_ratio = (chance_nodes / self.metrics[algo]['explored']) * 100
+                    self.metrics_text.insert(tk.END, f"Chance node ratio: {chance_ratio:.2f}%\n")
+
             if self.movement_started:
                 # Show progress for current shape
                 progress = (self.cells_filled / self.total_cells_to_fill) * 100 if self.total_cells_to_fill > 0 else 0
@@ -249,8 +528,8 @@ class InteractiveGrid:
         self.metrics_text.insert(tk.END, f"------------------------\n")
 
         # Show summary for all algorithms
-        for alg in ["A*", "BFS", "DFS"]:
-            if self.metrics[alg]["moves"] > 0:
+        for alg in ["A*", "BFS", "DFS", "Minimax", "Alpha-Beta", "Expectimax"]:
+            if alg in self.metrics and self.metrics[alg]["moves"] > 0:
                 avg_time = self.metrics[alg]["time"] / self.metrics[alg]["moves"]
                 success_rate = (self.metrics[alg]["success"] /
                                 (self.metrics[alg]["success"] + self.metrics[alg]["failures"])) * 100 if \
@@ -274,15 +553,14 @@ class InteractiveGrid:
         self.cells_filled = 0
 
         # Draw the grid
-        for row in range(GRID_SIZE):
-            for col in range(GRID_SIZE):
-                x1, y1 = col * CELL_SIZE, row * CELL_SIZE
-                x2, y2 = x1 + CELL_SIZE, y1 + CELL_SIZE
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                x1, y1 = col * self.cell_size, row * self.cell_size
+                x2, y2 = x1 + self.cell_size, y1 + self.cell_size
 
-                # Bottom two rows start as active cells
-                is_active = (row >= GRID_SIZE - 2)
-
-                fill_color = ACTIVE_COLOR if is_active else INACTIVE_COLOR
+                # Initially all cells are inactive
+                is_active = False
+                fill_color = INACTIVE_COLOR
                 rect = self.canvas.create_rectangle(x1, y1, x2, y2, fill=fill_color, outline=GRID_COLOR)
 
                 self.cells[(row, col)] = {
@@ -291,8 +569,36 @@ class InteractiveGrid:
                     "obstacle": False
                 }
 
-                if is_active:
-                    self.active_cells.append((row, col))
+        # Create active agents based on agent_count
+        self.active_cells = []
+
+        # Determine how many rows we need
+        cells_per_row = min(self.grid_size, 10)  # Maximum 10 cells per row
+        num_rows_needed = (self.agent_count + cells_per_row - 1) // cells_per_row  # Ceiling division
+
+        # Start from the bottom row and work upwards
+        remaining_cells = self.agent_count
+
+        for row_offset in range(num_rows_needed):
+            current_row = self.grid_size - 1 - row_offset
+
+            # Calculate how many cells to place in this row
+            cells_in_this_row = min(remaining_cells, cells_per_row)
+
+            # Center the cells in the row
+            start_col = (self.grid_size - cells_in_this_row) // 2
+
+            # Place cells in this row
+            for col in range(start_col, start_col + cells_in_this_row):
+                cell = (current_row, col)
+                self.cells[cell]["active"] = True
+                self.canvas.itemconfig(self.cells[cell]["rect"], fill=ACTIVE_COLOR)
+                self.active_cells.append(cell)
+                remaining_cells -= 1
+
+            # If we've placed all cells, break
+            if remaining_cells <= 0:
+                break
 
         # Set default shape (rectangle)
         self.target_shape = self.define_target_rectangle()
@@ -311,7 +617,7 @@ class InteractiveGrid:
 
     def define_target_rectangle(self):
         """Creates a 5x4 rectangle in the grid center (rows 3–6, columns 3–7)."""
-        mid_row, mid_col = GRID_SIZE // 2, GRID_SIZE // 2
+        mid_row, mid_col = self.grid_size // 2, self.grid_size // 2
         return [(mid_row - 2 + r, mid_col - 2 + c) for r in range(4) for c in range(5)]
 
     def define_target_triangle(self):
@@ -404,6 +710,68 @@ class InteractiveGrid:
         self.total_cells_to_fill = len(self.target_shape)
         self.update_status("Shape changed to circle.")
 
+    def start_custom_shape(self):
+        """Start custom shape drawing mode."""
+        if self.movement_started:
+            return
+
+        # Clear any existing shape
+        self.remove_green_outline()
+        self.custom_shape = []
+        self.target_shape = []
+
+        # Enter custom shape mode
+        self.custom_shape_mode = True
+
+        # Show the finish button
+        self.finish_custom_btn.pack(side=tk.LEFT, padx=2)
+
+        # Disable other shape buttons
+        self.rectangle_btn.config(state=tk.DISABLED)
+        self.triangle_btn.config(state=tk.DISABLED)
+        self.circle_btn.config(state=tk.DISABLED)
+        self.custom_btn.config(state=tk.DISABLED)
+
+        # Update status
+        self.update_status("Custom shape mode: Click on cells to create your shape. Click 'Finish Custom Shape' when done.")
+
+    def finish_custom_shape(self):
+        """Finish custom shape drawing and apply it."""
+        if not self.custom_shape_mode or self.movement_started:
+            return
+
+        # Exit custom shape mode
+        self.custom_shape_mode = False
+
+        # Hide the finish button
+        self.finish_custom_btn.pack_forget()
+
+        # Enable shape buttons
+        self.rectangle_btn.config(state=tk.NORMAL)
+        self.triangle_btn.config(state=tk.NORMAL)
+        self.circle_btn.config(state=tk.NORMAL)
+        self.custom_btn.config(state=tk.NORMAL)
+
+        # If no cells were selected, revert to rectangle
+        if not self.custom_shape:
+            self.set_rectangle_shape()
+            self.update_status("No cells selected for custom shape. Reverted to rectangle.")
+            return
+
+        # Apply the custom shape
+        self.target_shape = self.custom_shape.copy()
+        self.inner_cells, self.outline_cells, self.corner_cells = self.separate_cells()
+
+        # Reset all custom shape cells to inactive color first
+        for cell in self.custom_shape:
+            if cell in self.cells and not self.cells[cell]["active"] and not self.cells[cell]["obstacle"]:
+                self.canvas.itemconfig(self.cells[cell]["rect"], fill=INACTIVE_COLOR)
+
+        # Then draw the green outline (this adds the outline_rect property to cells)
+        self.draw_green_outline()
+        self.total_cells_to_fill = len(self.target_shape)
+        self.update_status(f"Custom shape created with {len(self.target_shape)} cells.")
+
     def separate_cells(self, target_cells=None):
         if target_cells is None:
             target_cells = self.target_shape  # Fallback for legacy calls
@@ -436,33 +804,64 @@ class InteractiveGrid:
         """Draws the green outline for the current target shape."""
         for cell in self.target_shape:
             row, col = cell
-            if 0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE:
-                x1, y1 = col * CELL_SIZE, row * CELL_SIZE
-                x2, y2 = x1 + CELL_SIZE, y1 + CELL_SIZE
+            if 0 <= row < self.grid_size and 0 <= col < self.grid_size:
+                x1, y1 = col * self.cell_size, row * self.cell_size
+                x2, y2 = x1 + self.cell_size, y1 + self.cell_size
                 rect = self.canvas.create_rectangle(x1, y1, x2, y2, fill=OUTLINE_COLOR, outline=GRID_COLOR)
                 self.cells[cell]["outline_rect"] = rect
 
     def remove_green_outline(self):
         """Removes the green outline for the current target shape."""
         for cell in self.target_shape:
-            if cell in self.cells and "outline_rect" in self.cells[cell]:
-                self.canvas.delete(self.cells[cell]["outline_rect"])
+            if cell in self.cells:
+                # Remove the outline rectangle if it exists
                 if "outline_rect" in self.cells[cell]:
+                    self.canvas.delete(self.cells[cell]["outline_rect"])
                     del self.cells[cell]["outline_rect"]
 
+                # Also ensure the cell color is reset if it's not active or an obstacle
+                # This is especially important for custom shapes
+                if not self.cells[cell]["active"] and not self.cells[cell]["obstacle"]:
+                    self.canvas.itemconfig(self.cells[cell]["rect"], fill=INACTIVE_COLOR)
+
     def toggle_obstacle(self, event):
-        """Toggles a cell's obstacle status on click (disabled once movement starts)."""
+        """
+        Toggles a cell's obstacle status on click (disabled once movement starts).
+        In custom shape mode, adds/removes cells to/from the custom shape.
+        """
         if self.movement_started:
             return
 
-        col = event.x // CELL_SIZE
-        row = event.y // CELL_SIZE
+        col = event.x // self.cell_size
+        row = event.y // self.cell_size
 
-        if not (0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE):
+        if not (0 <= row < self.grid_size and 0 <= col < self.grid_size):
             return
 
         cell = (row, col)
 
+        # Handle custom shape mode
+        if self.custom_shape_mode:
+            # Toggle cell in custom shape
+            if cell in self.custom_shape:
+                # Remove from custom shape
+                self.custom_shape.remove(cell)
+                # Reset cell color
+                fill_color = ACTIVE_COLOR if self.cells[cell]["active"] else INACTIVE_COLOR
+                if self.cells[cell]["obstacle"]:
+                    fill_color = OBSTACLE_COLOR
+                self.canvas.itemconfig(self.cells[cell]["rect"], fill=fill_color)
+                self.update_status(f"Removed cell {cell} from custom shape. Total cells: {len(self.custom_shape)}")
+            else:
+                # Add to custom shape if not an active cell
+                if not self.cells[cell]["active"]:
+                    self.custom_shape.append(cell)
+                    # Set cell color to outline color
+                    self.canvas.itemconfig(self.cells[cell]["rect"], fill=OUTLINE_COLOR)
+                    self.update_status(f"Added cell {cell} to custom shape. Total cells: {len(self.custom_shape)}")
+            return
+
+        # Normal obstacle toggling mode
         # Don't allow toggling active cells or target shape cells
         if cell in self.cells and not self.cells[cell]["active"] and cell not in self.target_shape:
             if self.cells[cell]["obstacle"]:
@@ -483,11 +882,11 @@ class InteractiveGrid:
         self.clear_obstacles()
 
         # Number of obstacles to add (adjust as needed)
-        num_obstacles = random.randint(10, 30)
+        num_obstacles = random.randint(10, min(30, self.grid_size * 2))
 
         for _ in range(num_obstacles):
-            row = random.randint(0, GRID_SIZE - 1)
-            col = random.randint(0, GRID_SIZE - 1)
+            row = random.randint(0, self.grid_size - 1)
+            col = random.randint(0, self.grid_size - 1)
             cell = (row, col)
 
             # Don't add obstacles in active cells or target shape
@@ -555,6 +954,53 @@ class InteractiveGrid:
         # 8. Update status
         self.update_status("Grid has been reset.")
 
+    def assign_targets(self):
+        """Assign target cells to active cells using the Hungarian algorithm."""
+        if not self.active_cells or not self.target_shape:
+            return
+
+        # Create cost matrix
+        cost_matrix = []
+        for active_cell in self.active_cells:
+            row = []
+            for target_cell in self.target_shape:
+                # Manhattan distance as cost
+                cost = abs(active_cell[0] - target_cell[0]) + abs(active_cell[1] - target_cell[1])
+                row.append(cost)
+            cost_matrix.append(row)
+
+        # Find optimal assignment using a greedy approach
+        self.cell_targets = {}
+        active_cells = self.active_cells.copy()
+        target_cells = self.target_shape.copy()
+
+        while active_cells and target_cells:
+            # Find the minimum cost assignment
+            min_cost = float('inf')
+            min_active_idx = -1
+            min_target_idx = -1
+
+            for i, active_cell in enumerate(active_cells):
+                for j, target_cell in enumerate(target_cells):
+                    cost = abs(active_cell[0] - target_cell[0]) + abs(active_cell[1] - target_cell[1])
+                    if cost < min_cost:
+                        min_cost = cost
+                        min_active_idx = i
+                        min_target_idx = j
+
+            # Assign the minimum cost pair
+            self.cell_targets[active_cells[min_active_idx]] = target_cells[min_target_idx]
+
+            # Remove the assigned cells
+            active_cells.pop(min_active_idx)
+            target_cells.pop(min_target_idx)
+
+        self.update_status("Targets assigned to active cells.")
+
+    # def get_control_mode_name(self):
+    #     """Get the name of the current control mode."""
+    #     return "centralized" if self.centralized_mode else "distributed"
+
     def start_movement(self):
         """Start the movement of active cells to form the target shape."""
         if self.movement_started or not self.active_cells:
@@ -565,6 +1011,11 @@ class InteractiveGrid:
 
         # Clear target shape overlay
         self.remove_green_outline()
+
+        # For custom shapes, ensure all cells are properly reset to inactive color
+        for cell in self.target_shape:
+            if cell in self.cells and not self.cells[cell]["active"] and not self.cells[cell]["obstacle"]:
+                self.canvas.itemconfig(self.cells[cell]["rect"], fill=INACTIVE_COLOR)
 
         # Initialize metrics for this run
         self.start_time = time.time()
@@ -1048,18 +1499,37 @@ class InteractiveGrid:
         # Count of cells explored during this search
         explored_count = 0
 
+        # Start timing
+        start_time = time.time()
+
         if algorithm == "A*":
             path, explored_count = self.a_star(start, goal)
         elif algorithm == "BFS":
             path, explored_count = self.bfs_search(start, goal)
         elif algorithm == "DFS":
             path, explored_count = self.dfs_search(start, goal)
+        elif algorithm == "Minimax":
+            path, explored_count = self.minimax_pathfinding(start, goal)
+        elif algorithm == "Alpha-Beta":
+            path, explored_count = self.alpha_beta_pathfinding(start, goal)
+        elif algorithm == "Expectimax":
+            path, explored_count = self.expectimax_pathfinding(start, goal)
         else:
             # Default to A*
             path, explored_count = self.a_star(start, goal)
 
+        # Calculate time taken
+        elapsed_time = time.time() - start_time
+        self.metrics[algorithm]["time"] += elapsed_time
+
         # Update explored cells metric
         self.metrics[algorithm]["explored"] += explored_count
+
+        # Update success/failure metrics
+        if path:
+            self.metrics[algorithm]["success"] += 1
+        else:
+            self.metrics[algorithm]["failures"] += 1
 
         return path
 
@@ -1206,6 +1676,129 @@ class InteractiveGrid:
 
         return None, explored_count
 
+    def minimax_pathfinding(self, start, goal):
+        """
+        Minimax algorithm adapted for pathfinding.
+
+        In this adaptation:
+        - The agent tries to maximize its position (closer to goal)
+        - The "opponent" (environment) tries to minimize (force longer paths)
+        - We use a depth limit to prevent excessive exploration
+        - We return the best path found within the depth limit
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 5  # Reduced depth to prevent freezing
+        max_explored = 500  # Limit the number of nodes to explore
+        timeout = 1.0  # Timeout in seconds
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Minimax function with alpha-beta pruning
+        def minimax(position, depth, alpha, beta, maximizing_player, path):
+            nonlocal explored_count
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Mark as visited for visualization (limit visualization to prevent UI freezing)
+            if position != start and position != goal and explored_count % 10 == 0:
+                self.mark_visited(position)
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf') if maximizing_player else float('inf'), path
+
+            if maximizing_player:
+                # Sort neighbors by heuristic to improve pruning
+                neighbors.sort(key=lambda n: heuristic(n))
+
+                best_score = float('-inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = minimax(neighbor, depth - 1, alpha, beta, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    alpha = max(alpha, best_score)
+                    if beta <= alpha:
+                        break
+
+                return best_score, best_path
+            else:
+                # Sort neighbors by heuristic (reversed) to improve pruning
+                neighbors.sort(key=lambda n: -heuristic(n))
+
+                best_score = float('inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = minimax(neighbor, depth - 1, alpha, beta, True, path + [position])
+
+                    if score < best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    beta = min(beta, best_score)
+                    if beta <= alpha:
+                        break
+
+                return best_score, best_path
+
+        # Start minimax search with timeout protection
+        try:
+            _, path = minimax(start, max_depth, float('-inf'), float('inf'), True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                self.update_status("Minimax timeout - falling back to A*")
+                a_star_path, a_star_explored = self.a_star(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception as e:
+            self.update_status(f"Minimax error: {str(e)} - falling back to A*")
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
+
     def get_neighbors(self, cell):
         """Returns valid neighbor cells with diagonal moves allowed only if adjacent cells are free."""
         row, col = cell
@@ -1218,7 +1811,7 @@ class InteractiveGrid:
         ]
 
         for r, c in cardinal_moves:
-            if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
+            if 0 <= r < self.grid_size and 0 <= c < self.grid_size:
                 neighbors.append((r, c))
 
         # Diagonal moves (only allowed if adjacent cardinal cells are free)
@@ -1228,7 +1821,7 @@ class InteractiveGrid:
         ]
 
         for i, (r, c) in enumerate(diagonal_moves):
-            if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
+            if 0 <= r < self.grid_size and 0 <= c < self.grid_size:
                 # Check if the adjacent cardinal cells are free
                 if i == 0:  # NW
                     adj1, adj2 = (row - 1, col), (row, col - 1)
@@ -1240,8 +1833,8 @@ class InteractiveGrid:
                     adj1, adj2 = (row + 1, col), (row, col + 1)
 
                 # Allow diagonal moves only if both adjacent cells are valid and not obstacles
-                if (0 <= adj1[0] < GRID_SIZE and 0 <= adj1[1] < GRID_SIZE and
-                        0 <= adj2[0] < GRID_SIZE and 0 <= adj2[1] < GRID_SIZE and
+                if (0 <= adj1[0] < self.grid_size and 0 <= adj1[1] < self.grid_size and
+                        0 <= adj2[0] < self.grid_size and 0 <= adj2[1] < self.grid_size and
                         not self.cells[adj1]["obstacle"] and
                         not self.cells[adj2]["obstacle"]):
                     neighbors.append((r, c))
@@ -1320,7 +1913,7 @@ class InteractiveGrid:
         saved_active_cells = self.active_cells.copy()
         saved_shape = self.target_shape.copy()
 
-        algorithms = ["A*", "BFS", "DFS"]
+        algorithms = ["A*", "BFS", "DFS", "Minimax", "Alpha-Beta", "Expectimax"]
         comparison_results = {}
 
         for algo in algorithms:
@@ -1360,8 +1953,8 @@ class InteractiveGrid:
         self.cells = {}
         for cell, properties in saved_cells.items():
             row, col = cell
-            x1, y1 = col * CELL_SIZE, row * CELL_SIZE
-            x2, y2 = x1 + CELL_SIZE, y1 + CELL_SIZE
+            x1, y1 = col * self.cell_size, row * self.cell_size
+            x2, y2 = x1 + self.cell_size, y1 + self.cell_size
 
             fill_color = ACTIVE_COLOR if properties["active"] else INACTIVE_COLOR
             if properties["obstacle"]:
@@ -1472,6 +2065,12 @@ class InteractiveGrid:
             return self.bfs_search_batch(start, goal)
         elif algorithm == "DFS":
             return self.dfs_search_batch(start, goal)
+        elif algorithm == "Minimax":
+            return self.minimax_pathfinding_batch(start, goal)
+        elif algorithm == "Alpha-Beta":
+            return self.alpha_beta_pathfinding_batch(start, goal)
+        elif algorithm == "Expectimax":
+            return self.expectimax_pathfinding_batch(start, goal)
         else:
             # Default to A*
             return self.a_star_batch(start, goal)
@@ -1544,7 +2143,613 @@ class InteractiveGrid:
                 new_path.append(neighbor)
                 queue.append(new_path)
 
-        return None, explored_count
+    def alpha_beta_pathfinding(self, start, goal):
+        """
+        Enhanced Alpha-Beta pruning algorithm for pathfinding.
+        This is an improved version of Minimax with more aggressive pruning.
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 6  # Slightly increased depth compared to Minimax
+        max_explored = 600  # Allow more exploration
+        timeout = 1.0  # Same timeout as Minimax
+        pruned_nodes = 0  # Count pruned nodes for metrics
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Alpha-Beta function with enhanced pruning
+        def alpha_beta(position, depth, alpha, beta, maximizing_player, path):
+            nonlocal explored_count, pruned_nodes
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Mark as visited for visualization (limit visualization to prevent UI freezing)
+            if position != start and position != goal and explored_count % 10 == 0:
+                self.mark_visited(position)
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf') if maximizing_player else float('inf'), path
+
+            # Enhanced neighbor sorting for better pruning
+            if maximizing_player:
+                # Sort by heuristic (closest to goal first)
+                neighbors.sort(key=lambda n: heuristic(n))
+            else:
+                # Sort by reverse heuristic (furthest from goal first)
+                neighbors.sort(key=lambda n: -heuristic(n))
+
+            if maximizing_player:
+                best_score = float('-inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = alpha_beta(neighbor, depth - 1, alpha, beta, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    alpha = max(alpha, best_score)
+                    if beta <= alpha:
+                        # Pruning occurred
+                        pruned_nodes += len(neighbors) - neighbors.index(neighbor) - 1
+                        break
+
+                return best_score, best_path
+            else:
+                best_score = float('inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = alpha_beta(neighbor, depth - 1, alpha, beta, True, path + [position])
+
+                    if score < best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    beta = min(beta, best_score)
+                    if beta <= alpha:
+                        # Pruning occurred
+                        pruned_nodes += len(neighbors) - neighbors.index(neighbor) - 1
+                        break
+
+                return best_score, best_path
+
+        # Start alpha-beta search with timeout protection
+        try:
+            _, path = alpha_beta(start, max_depth, float('-inf'), float('inf'), True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                self.update_status("Alpha-Beta timeout - falling back to A*")
+                a_star_path, a_star_explored = self.a_star(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception as e:
+            self.update_status(f"Alpha-Beta error: {str(e)} - falling back to A*")
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Update pruned nodes metric
+        self.metrics["Alpha-Beta"]["pruned"] += pruned_nodes
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            self.update_status("Alpha-Beta couldn't reach goal - falling back to A*")
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
+
+    def minimax_pathfinding_batch(self, start, goal):
+        """
+        Minimax algorithm for batch testing (no visualization).
+        This is a simplified version of the minimax_pathfinding method.
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 4  # Further reduced depth for batch testing
+        max_explored = 300  # Limit the number of nodes to explore
+        timeout = 0.5  # Shorter timeout for batch testing
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Minimax function with alpha-beta pruning
+        def minimax(position, depth, alpha, beta, maximizing_player, path):
+            nonlocal explored_count
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf') if maximizing_player else float('inf'), path
+
+            if maximizing_player:
+                # Sort neighbors by heuristic to improve pruning
+                neighbors.sort(key=lambda n: heuristic(n))
+
+                best_score = float('-inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = minimax(neighbor, depth - 1, alpha, beta, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    alpha = max(alpha, best_score)
+                    if beta <= alpha:
+                        break
+
+                return best_score, best_path
+            else:
+                # Sort neighbors by heuristic (reversed) to improve pruning
+                neighbors.sort(key=lambda n: -heuristic(n))
+
+                best_score = float('inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = minimax(neighbor, depth - 1, alpha, beta, True, path + [position])
+
+                    if score < best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    beta = min(beta, best_score)
+                    if beta <= alpha:
+                        break
+
+                return best_score, best_path
+
+        # Start minimax search with timeout protection
+        try:
+            _, path = minimax(start, max_depth, float('-inf'), float('inf'), True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                a_star_path, a_star_explored = self.a_star_batch(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception:
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
+
+    def alpha_beta_pathfinding_batch(self, start, goal):
+        """
+        Enhanced Alpha-Beta pruning algorithm for batch testing (no visualization).
+        This is a simplified version of the alpha_beta_pathfinding method.
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 5  # Depth for batch testing
+        max_explored = 400  # Limit the number of nodes to explore
+        timeout = 0.5  # Shorter timeout for batch testing
+        pruned_nodes = 0  # Count pruned nodes for metrics
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Alpha-Beta function with enhanced pruning
+        def alpha_beta(position, depth, alpha, beta, maximizing_player, path):
+            nonlocal explored_count, pruned_nodes
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf') if maximizing_player else float('inf'), path
+
+            # Enhanced neighbor sorting for better pruning
+            if maximizing_player:
+                # Sort by heuristic (closest to goal first)
+                neighbors.sort(key=lambda n: heuristic(n))
+            else:
+                # Sort by reverse heuristic (furthest from goal first)
+                neighbors.sort(key=lambda n: -heuristic(n))
+
+            if maximizing_player:
+                best_score = float('-inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = alpha_beta(neighbor, depth - 1, alpha, beta, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    alpha = max(alpha, best_score)
+                    if beta <= alpha:
+                        # Pruning occurred
+                        pruned_nodes += len(neighbors) - neighbors.index(neighbor) - 1
+                        break
+
+                return best_score, best_path
+            else:
+                best_score = float('inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    score, new_path = alpha_beta(neighbor, depth - 1, alpha, beta, True, path + [position])
+
+                    if score < best_score:
+                        best_score = score
+                        best_path = new_path
+
+                    beta = min(beta, best_score)
+                    if beta <= alpha:
+                        # Pruning occurred
+                        pruned_nodes += len(neighbors) - neighbors.index(neighbor) - 1
+                        break
+
+                return best_score, best_path
+
+        # Start alpha-beta search with timeout protection
+        try:
+            _, path = alpha_beta(start, max_depth, float('-inf'), float('inf'), True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                a_star_path, a_star_explored = self.a_star_batch(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception:
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Update pruned nodes metric
+        self.metrics["Alpha-Beta"]["pruned"] += pruned_nodes
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
+
+    def expectimax_pathfinding(self, start, goal):
+        """
+        Expectimax algorithm adapted for pathfinding.
+
+        In this adaptation:
+        - The agent tries to maximize its position (closer to goal)
+        - Chance nodes represent uncertainty in the environment
+        - We use a depth limit to prevent excessive exploration
+        - We return the best path found within the depth limit
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 5  # Limit search depth
+        max_explored = 500  # Limit the number of nodes to explore
+        timeout = 1.0  # Timeout in seconds
+        chance_nodes = 0  # Count chance nodes for metrics
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Expectimax function
+        def expectimax(position, depth, is_max_node, path):
+            nonlocal explored_count, chance_nodes
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Mark as visited for visualization (limit visualization to prevent UI freezing)
+            if position != start and position != goal and explored_count % 10 == 0:
+                self.mark_visited(position)
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf'), path
+
+            if is_max_node:
+                # Max node (agent's turn)
+                best_score = float('-inf')
+                best_path = path
+
+                # Sort neighbors by heuristic (closest to goal first)
+                neighbors.sort(key=lambda n: heuristic(n))
+
+                for neighbor in neighbors:
+                    # The next level is a chance node
+                    score, new_path = expectimax(neighbor, depth - 1, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                return best_score, best_path
+            else:
+                # Chance node (environment's "turn")
+                chance_nodes += 1
+
+                # Calculate expected value across all neighbors
+                total_score = 0
+                best_path = path
+                best_individual_score = float('-inf')
+
+                # Equal probability for each neighbor
+                probability = 1.0 / len(neighbors)
+
+                for neighbor in neighbors:
+                    score, new_path = expectimax(neighbor, depth - 1, True, path + [position])
+                    total_score += score * probability
+
+                    # Keep track of the best individual path for returning
+                    if score > best_individual_score:
+                        best_individual_score = score
+                        best_path = new_path
+
+                # Return expected value and the best path
+                return total_score, best_path
+
+        # Start expectimax search with timeout protection
+        try:
+            _, path = expectimax(start, max_depth, True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                self.update_status("Expectimax timeout - falling back to A*")
+                a_star_path, a_star_explored = self.a_star(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception as e:
+            self.update_status(f"Expectimax error: {str(e)} - falling back to A*")
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Update chance nodes metric
+        self.metrics["Expectimax"]["chance_nodes"] += chance_nodes
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            self.update_status("Expectimax couldn't reach goal - falling back to A*")
+            a_star_path, a_star_explored = self.a_star(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
+
+    def expectimax_pathfinding_batch(self, start, goal):
+        """
+        Expectimax algorithm for batch testing (no visualization).
+        This is a simplified version of the expectimax_pathfinding method.
+        """
+        start_time = time.time()
+        explored_count = 0
+        max_depth = 4  # Reduced depth for batch testing
+        max_explored = 300  # Limit the number of nodes to explore
+        timeout = 0.5  # Shorter timeout for batch testing
+        chance_nodes = 0  # Count chance nodes for metrics
+
+        # Calculate heuristic distance (Manhattan distance)
+        def heuristic(pos):
+            return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+        # Expectimax function
+        def expectimax(position, depth, is_max_node, path):
+            nonlocal explored_count, chance_nodes
+            explored_count += 1
+
+            # Early termination if we've explored too many nodes or exceeded timeout
+            if explored_count > max_explored or (time.time() - start_time) > timeout:
+                return -heuristic(position), path + [position]
+
+            # Base cases
+            if position == goal:
+                return float('inf'), path + [position]
+
+            if depth == 0:
+                # Return negative heuristic as score (closer to goal = higher score)
+                return -heuristic(position), path + [position]
+
+            # Get valid neighbors
+            neighbors = []
+            for neighbor in self.get_neighbors(position):
+                if (self.cells[neighbor]["obstacle"] or
+                    self.cells[neighbor]["active"] or
+                    neighbor in self.reserved_cells or
+                    neighbor in path):  # Avoid cycles
+                    continue
+                neighbors.append(neighbor)
+
+            # If no valid moves, return a poor score
+            if not neighbors:
+                return float('-inf'), path
+
+            if is_max_node:
+                # Max node (agent's turn)
+                best_score = float('-inf')
+                best_path = path
+
+                for neighbor in neighbors:
+                    # The next level is a chance node
+                    score, new_path = expectimax(neighbor, depth - 1, False, path + [position])
+
+                    if score > best_score:
+                        best_score = score
+                        best_path = new_path
+
+                return best_score, best_path
+            else:
+                # Chance node (environment's "turn")
+                chance_nodes += 1
+
+                # Calculate expected value across all neighbors
+                total_score = 0
+                best_path = path
+                best_individual_score = float('-inf')
+
+                # Equal probability for each neighbor
+                probability = 1.0 / len(neighbors)
+
+                for neighbor in neighbors:
+                    score, new_path = expectimax(neighbor, depth - 1, True, path + [position])
+                    total_score += score * probability
+
+                    # Keep track of the best individual path for returning
+                    if score > best_individual_score:
+                        best_individual_score = score
+                        best_path = new_path
+
+                # Return expected value and the best path
+                return total_score, best_path
+
+        # Start expectimax search with timeout protection
+        try:
+            _, path = expectimax(start, max_depth, True, [])
+
+            # If search took too long, fall back to A*
+            if (time.time() - start_time) > timeout:
+                a_star_path, a_star_explored = self.a_star_batch(start, goal)
+                explored_count += a_star_explored
+                return a_star_path, explored_count
+        except Exception:
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        # Update chance nodes metric
+        self.metrics["Expectimax"]["chance_nodes"] += chance_nodes
+
+        # Clean up the path (remove duplicates and ensure it starts with start)
+        if path and path[0] != start:
+            path = [start] + path
+
+        # Check if path reaches the goal
+        if not path or path[-1] != goal:
+            # If goal not reached, try A* as fallback
+            a_star_path, a_star_explored = self.a_star_batch(start, goal)
+            explored_count += a_star_explored
+            return a_star_path, explored_count
+
+        return path, explored_count
 
     def dfs_search_batch(self, start, goal):
         """DFS implementation for batch testing (no visualization)."""
