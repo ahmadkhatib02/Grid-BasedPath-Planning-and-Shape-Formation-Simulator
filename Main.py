@@ -93,9 +93,43 @@ class InteractiveGrid:
                              font=("Arial", 12, "bold"), bg=HEADER_BG, fg=HEADER_FG)
         control_title.pack()
 
-        # Inner frame for controls
-        right_frame = Frame(right_outer_frame, bg=FRAME_BG, padx=10, pady=10)
-        right_frame.pack(fill=tk.BOTH, expand=True)
+        # Create a canvas with scrollbar for the controls
+        control_canvas = tk.Canvas(right_outer_frame, bg=FRAME_BG, highlightthickness=0)
+        control_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Add a scrollbar to the canvas
+        control_scrollbar = tk.Scrollbar(right_outer_frame, orient=tk.VERTICAL, command=control_canvas.yview)
+        control_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Configure the canvas to use the scrollbar
+        control_canvas.configure(yscrollcommand=control_scrollbar.set)
+
+        # Inner frame for controls (this will be placed inside the canvas)
+        right_frame = Frame(control_canvas, bg=FRAME_BG, padx=10, pady=10)
+
+        # Create a window in the canvas to hold the frame
+        control_canvas_window = control_canvas.create_window((0, 0), window=right_frame, anchor=tk.NW)
+
+        # Configure the scrolling region when the frame changes size
+        def configure_scroll_region(event):  # event parameter is required by tkinter
+            control_canvas.configure(scrollregion=control_canvas.bbox("all"))
+
+        # Update the scrollable region when the size of the frame changes
+        right_frame.bind("<Configure>", configure_scroll_region)
+
+        # Update the canvas's width when the frame changes width
+        def configure_canvas_width(event):
+            canvas_width = event.width
+            control_canvas.itemconfig(control_canvas_window, width=canvas_width)
+
+        control_canvas.bind("<Configure>", configure_canvas_width)
+
+        # Add mouse wheel scrolling
+        def _on_mousewheel(event):
+            control_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        # Bind mousewheel events
+        control_canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Initialize data structures
         self.cells = {}
