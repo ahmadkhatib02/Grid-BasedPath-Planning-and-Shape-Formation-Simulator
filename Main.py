@@ -181,12 +181,44 @@ class InteractiveGrid:
 
         # Performance metrics
         self.metrics = {
-            "A*": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
-            "BFS": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
-            "DFS": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
-            "Minimax": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0},
-            "Alpha-Beta": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0, "pruned": 0},
-            "Expectimax": {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0, "chance_nodes": 0}
+            "A*": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,  # Percentage of targets filled
+                "completed_targets": 0,  # Number of targets successfully filled
+                "total_targets": 0  # Total number of targets in the shape
+            },
+            "BFS": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0
+            },
+            "DFS": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0
+            },
+            "Minimax": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0
+            },
+            "Alpha-Beta": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0,
+                "pruned": 0
+            },
+            "Expectimax": {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0,
+                "chance_nodes": 0
+            }
         }
         self.current_algorithm = "A*"
         self.total_cells_to_fill = 0
@@ -563,23 +595,29 @@ class InteractiveGrid:
 
         # Check if the algorithm exists in metrics
         if algo not in self.metrics:
-            # Add the algorithm to metrics
-            self.metrics[algo] = {"explored": 0, "path_length": 0, "time": 0, "moves": 0, "success": 0, "failures": 0}
+            # Add the algorithm to metrics with the new structure
+            self.metrics[algo] = {
+                "explored": 0, "path_length": 0, "time": 0, "moves": 0,
+                "success_rate": 0, "completed_targets": 0, "total_targets": 0
+            }
             self.metrics_text.insert(tk.END, "No data yet for this algorithm.\n")
         elif self.metrics[algo]["moves"] > 0:
-            avg_time = self.metrics[algo]["time"] / self.metrics[algo]["moves"]
+            total_time = self.metrics[algo]["time"]
             avg_explored = self.metrics[algo]["explored"] / self.metrics[algo]["moves"]
             avg_path = self.metrics[algo]["path_length"] / self.metrics[algo]["moves"]
-            success_rate = (self.metrics[algo]["success"] /
-                            (self.metrics[algo]["success"] + self.metrics[algo]["failures"])) * 100 if \
-                (self.metrics[algo]["success"] + self.metrics[algo]["failures"]) > 0 else 0
+
+            # Get the success rate directly
+            success_rate = self.metrics[algo]["success_rate"]
+            completed_targets = self.metrics[algo]["completed_targets"]
+            total_targets = self.metrics[algo]["total_targets"]
 
             self.metrics_text.insert(tk.END,
                                      f"Cells explored: {self.metrics[algo]['explored']} (Avg: {avg_explored:.2f})\n")
             self.metrics_text.insert(tk.END,
                                      f"Path length: {self.metrics[algo]['path_length']} (Avg: {avg_path:.2f})\n")
-            self.metrics_text.insert(tk.END, f"Time: {self.metrics[algo]['time']:.4f}s (Avg: {avg_time:.4f}s)\n")
+            self.metrics_text.insert(tk.END, f"Time: {total_time:.4f}s\n")
             self.metrics_text.insert(tk.END, f"Success rate: {success_rate:.1f}%\n")
+            self.metrics_text.insert(tk.END, f"Completed targets: {completed_targets}/{total_targets}\n")
 
             # Show pruned nodes for Alpha-Beta
             if algo == "Alpha-Beta" and "pruned" in self.metrics[algo]:
@@ -612,11 +650,11 @@ class InteractiveGrid:
         # Show summary for all algorithms
         for alg in ["A*", "BFS", "DFS", "Minimax", "Alpha-Beta", "Expectimax"]:
             if alg in self.metrics and self.metrics[alg]["moves"] > 0:
-                avg_time = self.metrics[alg]["time"] / self.metrics[alg]["moves"]
-                success_rate = (self.metrics[alg]["success"] /
-                                (self.metrics[alg]["success"] + self.metrics[alg]["failures"])) * 100 if \
-                    (self.metrics[alg]["success"] + self.metrics[alg]["failures"]) > 0 else 0
-                self.metrics_text.insert(tk.END, f"{alg}: Avg time: {avg_time:.4f}s, Success: {success_rate:.1f}%\n")
+                total_time = self.metrics[alg]["time"]
+                success_rate = self.metrics[alg]["success_rate"]
+
+                self.metrics_text.insert(tk.END,
+                    f"{alg}: Time: {total_time:.4f}s, Success rate: {success_rate:.1f}%\n")
             else:
                 self.metrics_text.insert(tk.END, f"{alg}: No data yet\n")
 
@@ -1557,10 +1595,20 @@ class InteractiveGrid:
     def move_next_square(self):
         """Core movement logic with dynamic hardest-target selection."""
         if not self.active_cells:
+            elapsed_time = time.time() - self.start_time
             self.update_status("No more active cells available.")
 
-            # Update metrics for failure
-            self.metrics[self.current_algorithm]["failures"] += 1
+            # Calculate success rate based on completed targets
+            remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
+            completed_targets = len(self.target_shape) - len(remaining_targets)
+            total_targets = len(self.target_shape)
+            success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+
+            # Update metrics
+            self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
+            self.metrics[self.current_algorithm]["total_targets"] = total_targets
+            self.metrics[self.current_algorithm]["success_rate"] = success_rate
+            self.metrics[self.current_algorithm]["time"] += elapsed_time
             self.update_metrics_display()
 
             self.movement_started = False
@@ -1572,8 +1620,13 @@ class InteractiveGrid:
             elapsed_time = time.time() - self.start_time
             self.update_status(f"Target shape formation complete in {elapsed_time:.2f}s!")
 
-            # Update metrics for success
-            self.metrics[self.current_algorithm]["success"] += 1
+            # All targets completed - 100% success rate
+            total_targets = len(self.target_shape)
+
+            # Update metrics
+            self.metrics[self.current_algorithm]["completed_targets"] = total_targets
+            self.metrics[self.current_algorithm]["total_targets"] = total_targets
+            self.metrics[self.current_algorithm]["success_rate"] = 100.0
             self.metrics[self.current_algorithm]["time"] += elapsed_time
             self.update_metrics_display()
 
@@ -1593,10 +1646,20 @@ class InteractiveGrid:
                 target_costs[target] = min_length
 
         if not target_costs:
+            elapsed_time = time.time() - self.start_time
             self.update_status("No reachable targets left")
 
-            # Update metrics for failure
-            self.metrics[self.current_algorithm]["failures"] += 1
+            # Calculate success rate based on completed targets
+            remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
+            completed_targets = len(self.target_shape) - len(remaining_targets)
+            total_targets = len(self.target_shape)
+            success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+
+            # Update metrics
+            self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
+            self.metrics[self.current_algorithm]["total_targets"] = total_targets
+            self.metrics[self.current_algorithm]["success_rate"] = success_rate
+            self.metrics[self.current_algorithm]["time"] += elapsed_time
             self.update_metrics_display()
 
             self.movement_started = False
@@ -1642,9 +1705,6 @@ class InteractiveGrid:
         # Clear previous visited cells visualization
         self.clear_visited_cells()
 
-        # Count of cells explored during this search
-        explored_count = 0
-
         # Start timing
         start_time = time.time()
 
@@ -1666,22 +1726,17 @@ class InteractiveGrid:
 
         # Calculate time taken
         elapsed_time = time.time() - start_time
-        self.metrics[algorithm]["time"] += elapsed_time
 
-        # Update explored cells metric
+        # Update metrics
+        self.metrics[algorithm]["time"] += elapsed_time
         self.metrics[algorithm]["explored"] += explored_count
 
-        # Update success/failure metrics
-        if path:
-            self.metrics[algorithm]["success"] += 1
-        else:
-            self.metrics[algorithm]["failures"] += 1
+        # We no longer track individual pathfinding success/failure
 
         return path
 
     def a_star(self, start, goal):
         """A* pathfinding implementation with obstacle avoidance."""
-        start_time = time.time()
         explored_count = 0
 
         def heuristic(a, b):
@@ -1701,10 +1756,6 @@ class InteractiveGrid:
                 self.mark_visited(current)
 
             if current == goal:
-                # Calculate algorithm execution time
-                execution_time = time.time() - start_time
-                self.metrics[self.current_algorithm]["time"] += execution_time
-
                 # Reconstruct path
                 path = []
                 while current in came_from:
@@ -1728,15 +1779,10 @@ class InteractiveGrid:
                     f_score = tentative_g_score + heuristic(neighbor, goal)
                     heapq.heappush(open_set, (f_score, neighbor))
 
-        # Calculate algorithm execution time even if path not found
-        execution_time = time.time() - start_time
-        self.metrics[self.current_algorithm]["time"] += execution_time
-
         return None, explored_count
 
     def bfs_search(self, start, goal):
         """Breadth-First Search implementation."""
-        start_time = time.time()
         explored_count = 0
 
         queue = deque([[start]])
@@ -1752,10 +1798,6 @@ class InteractiveGrid:
                 self.mark_visited(current)
 
             if current == goal:
-                # Calculate algorithm execution time
-                execution_time = time.time() - start_time
-                self.metrics[self.current_algorithm]["time"] += execution_time
-
                 return path, explored_count
 
             for neighbor in self.get_neighbors(current):
@@ -1770,15 +1812,10 @@ class InteractiveGrid:
                 new_path.append(neighbor)
                 queue.append(new_path)
 
-        # Calculate algorithm execution time even if path not found
-        execution_time = time.time() - start_time
-        self.metrics[self.current_algorithm]["time"] += execution_time
-
         return None, explored_count
 
     def dfs_search(self, start, goal):
         """Depth-First Search implementation."""
-        start_time = time.time()
         explored_count = 0
 
         stack = [[start]]
@@ -1794,10 +1831,6 @@ class InteractiveGrid:
                 self.mark_visited(current)
 
             if current == goal:
-                # Calculate algorithm execution time
-                execution_time = time.time() - start_time
-                self.metrics[self.current_algorithm]["time"] += execution_time
-
                 return path, explored_count
 
             # Reverse neighbors to maintain a more natural DFS order
@@ -1815,10 +1848,6 @@ class InteractiveGrid:
                 new_path = list(path)
                 new_path.append(neighbor)
                 stack.append(new_path)
-
-        # Calculate algorithm execution time even if path not found
-        execution_time = time.time() - start_time
-        self.metrics[self.current_algorithm]["time"] += execution_time
 
         return None, explored_count
 
@@ -2059,6 +2088,14 @@ class InteractiveGrid:
         saved_active_cells = self.active_cells.copy()
         saved_shape = self.target_shape.copy()
 
+        # Save current algorithm
+        saved_algorithm = self.current_algorithm
+
+        # Save current metrics
+        saved_metrics = {}
+        for algo, metrics in self.metrics.items():
+            saved_metrics[algo] = metrics.copy()
+
         algorithms = ["A*", "BFS", "DFS", "Minimax", "Alpha-Beta", "Expectimax"]
         comparison_results = {}
 
@@ -2069,6 +2106,23 @@ class InteractiveGrid:
             # Set algorithm
             self.current_algorithm = algo
             self.algorithm_var.set(algo)
+
+            # Reset metrics for this algorithm for the comparison
+            self.metrics[algo] = {
+                "explored": 0,
+                "path_length": 0,
+                "time": 0,
+                "moves": 0,
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0
+            }
+
+            # Add special metrics for specific algorithms
+            if algo == "Alpha-Beta":
+                self.metrics[algo]["pruned"] = 0
+            elif algo == "Expectimax":
+                self.metrics[algo]["chance_nodes"] = 0
 
             # Run simulation
             start_time = time.time()
@@ -2089,6 +2143,16 @@ class InteractiveGrid:
 
         # Reset to original state
         self.reset_comparison_grid(saved_cells, saved_active_cells, saved_shape)
+
+        # Restore original algorithm
+        self.current_algorithm = saved_algorithm
+        self.algorithm_var.set(saved_algorithm)
+
+        # Restore original metrics
+        self.metrics = saved_metrics
+
+        # Update metrics display
+        self.update_metrics_display()
 
     def reset_comparison_grid(self, saved_cells, saved_active_cells, saved_shape):
         """Reset grid to a saved state for comparison tests."""
@@ -2135,21 +2199,47 @@ class InteractiveGrid:
         total_cells_explored = 0
         num_moves = 0
 
+        # Start time for the entire simulation
+        sim_start_time = time.time()
+
         while True:
             # Check for completion or failure
             if not self.active_cells:
+                # Calculate success rate based on completed targets
+                remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
+                completed_targets = len(self.target_shape) - len(remaining_targets)
+                total_targets = len(self.target_shape)
+                success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+
+                # Update metrics
+                self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
+                self.metrics[self.current_algorithm]["total_targets"] = total_targets
+                self.metrics[self.current_algorithm]["success_rate"] = success_rate
+                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+
                 return False, {
                     "path_length": total_path_length,
                     "explored": total_cells_explored,
-                    "moves": num_moves
+                    "moves": num_moves,
+                    "success_rate": success_rate
                 }
 
             remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
             if not remaining_targets:
+                # All targets completed - 100% success rate
+                total_targets = len(self.target_shape)
+
+                # Update metrics
+                self.metrics[self.current_algorithm]["completed_targets"] = total_targets
+                self.metrics[self.current_algorithm]["total_targets"] = total_targets
+                self.metrics[self.current_algorithm]["success_rate"] = 100.0
+                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+
                 return True, {
                     "path_length": total_path_length,
                     "explored": total_cells_explored,
-                    "moves": num_moves
+                    "moves": num_moves,
+                    "success_rate": 100.0
                 }
 
             # Calculate minimal path lengths for each target
@@ -2177,10 +2267,23 @@ class InteractiveGrid:
                     target_explored[target] = best_explored
 
             if not target_costs:
+                # Calculate success rate based on completed targets
+                remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
+                completed_targets = len(self.target_shape) - len(remaining_targets)
+                total_targets = len(self.target_shape)
+                success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+
+                # Update metrics
+                self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
+                self.metrics[self.current_algorithm]["total_targets"] = total_targets
+                self.metrics[self.current_algorithm]["success_rate"] = success_rate
+                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+
                 return False, {
                     "path_length": total_path_length,
                     "explored": total_cells_explored,
-                    "moves": num_moves
+                    "moves": num_moves,
+                    "success_rate": success_rate
                 }
 
             # Select the hardest target
@@ -2194,6 +2297,11 @@ class InteractiveGrid:
             total_cells_explored += explored
             num_moves += 1
 
+            # Update metrics
+            self.metrics[self.current_algorithm]["path_length"] += len(best_path)
+            self.metrics[self.current_algorithm]["explored"] += explored
+            self.metrics[self.current_algorithm]["moves"] += 1
+
             # Move agent (without animation)
             self.active_cells.remove(selected_active)
 
@@ -2205,21 +2313,26 @@ class InteractiveGrid:
         """Fast pathfinding version without visualization for batch testing."""
         algorithm = self.current_algorithm
 
+        # Get the path and explored count
         if algorithm == "A*":
-            return self.a_star_batch(start, goal)
+            path, explored_count = self.a_star_batch(start, goal)
         elif algorithm == "BFS":
-            return self.bfs_search_batch(start, goal)
+            path, explored_count = self.bfs_search_batch(start, goal)
         elif algorithm == "DFS":
-            return self.dfs_search_batch(start, goal)
+            path, explored_count = self.dfs_search_batch(start, goal)
         elif algorithm == "Minimax":
-            return self.minimax_pathfinding_batch(start, goal)
+            path, explored_count = self.minimax_pathfinding_batch(start, goal)
         elif algorithm == "Alpha-Beta":
-            return self.alpha_beta_pathfinding_batch(start, goal)
+            path, explored_count = self.alpha_beta_pathfinding_batch(start, goal)
         elif algorithm == "Expectimax":
-            return self.expectimax_pathfinding_batch(start, goal)
+            path, explored_count = self.expectimax_pathfinding_batch(start, goal)
         else:
             # Default to A*
-            return self.a_star_batch(start, goal)
+            path, explored_count = self.a_star_batch(start, goal)
+
+        # We no longer track individual pathfinding success/failure
+
+        return path, explored_count
 
     def a_star_batch(self, start, goal):
         """A* implementation for batch testing (no visualization)."""
@@ -2937,7 +3050,7 @@ class InteractiveGrid:
         self.metrics_text.insert(tk.END, "=== ALGORITHM COMPARISON ===\n\n")
 
         for algo, data in results.items():
-            success_text = "SUCCESS" if data["success"] else "FAILED"
+            success_text = "SUCCESS" if data["success"] else "PARTIAL"
             self.metrics_text.insert(tk.END, f"{algo}: {success_text}\n")
             self.metrics_text.insert(tk.END, f"Total Time: {data['time']:.4f} seconds\n")
 
@@ -2948,19 +3061,24 @@ class InteractiveGrid:
                     self.metrics_text.insert(tk.END, f"Avg Path Length: {stats['path_length'] / stats['moves']:.2f}\n")
                     self.metrics_text.insert(tk.END, f"Avg Cells Explored: {stats['explored'] / stats['moves']:.2f}\n")
 
+                # Add success rate to the report
+                if 'success_rate' in stats:
+                    self.metrics_text.insert(tk.END, f"Success Rate: {stats['success_rate']:.1f}%\n")
+
             self.metrics_text.insert(tk.END, "\n")
 
         # Summary comparison
         self.metrics_text.insert(tk.END, "=== SUMMARY ===\n")
 
-        # Sort by success first, then by time
+        # Sort by success rate first, then by time
         sorted_algos = sorted(results.keys(),
-                              key=lambda a: (-1 if results[a]["success"] else 0, results[a]["time"]))
+                              key=lambda a: (-results[a]["stats"].get("success_rate", 0), results[a]["time"]))
 
         self.metrics_text.insert(tk.END, "Ranking by performance:\n")
         for i, algo in enumerate(sorted_algos):
-            success_text = "✓" if results[algo]["success"] else "✗"
-            self.metrics_text.insert(tk.END, f"{i + 1}. {algo} {success_text} ({results[algo]['time']:.4f}s)\n")
+            success_rate = results[algo]["stats"].get("success_rate", 0)
+            total_time = results[algo]["time"]
+            self.metrics_text.insert(tk.END, f"{i + 1}. {algo} ({success_rate:.1f}%) (Time: {total_time:.4f}s)\n")
 
         self.metrics_text.config(state=tk.DISABLED)
 
