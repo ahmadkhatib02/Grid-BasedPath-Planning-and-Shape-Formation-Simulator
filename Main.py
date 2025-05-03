@@ -5,6 +5,7 @@ import heapq
 from collections import deque
 import random
 import time
+from AIAssistant import AIAssistant
 
 # Grid settings
 DEFAULT_GRID_SIZE = 10  # Default grid size
@@ -36,16 +37,39 @@ class InteractiveGrid:
         self.root.title("Interactive Grid - Shape Formation Simulator")
         self.root.configure(bg=FRAME_BG)
 
-        # Add a title header
+        # Add a title header with AI Assistant button
         title_frame = tk.Frame(root, bg=HEADER_BG, padx=10, pady=10)
         title_frame.pack(fill=tk.X)
 
-        title_label = tk.Label(title_frame,
+        # Create a container for the title and AI button
+        title_container = tk.Frame(title_frame, bg=HEADER_BG)
+        title_container.pack(fill=tk.X)
+
+        title_label = tk.Label(title_container,
                               text="Interactive Grid - Shape Formation Simulator",
                               font=("Arial", 16, "bold"),
                               bg=HEADER_BG,
                               fg=HEADER_FG)
-        title_label.pack()
+        title_label.pack(side=tk.LEFT)
+
+        # Create the AI Assistant
+        self.ai_assistant = AIAssistant(root)
+
+        # Add AI Assistant button
+        ai_button_style = {
+            "bg": "#9B59B6",  # Purple
+            "fg": "white",
+            "activebackground": "#8E44AD",  # Darker purple
+            "relief": tk.RAISED,
+            "padx": 10,
+            "pady": 5,
+            "font": ("Arial", 10, "bold")
+        }
+
+        self.ai_button = tk.Button(title_container, text="AI Assistant",
+                                  command=self.toggle_ai_assistant,
+                                  **ai_button_style)
+        self.ai_button.pack(side=tk.RIGHT, padx=10)
 
         # Initialize speed_var first, before anything tries to use it
         self.speed_var = tk.IntVar(value=100)
@@ -398,6 +422,20 @@ class InteractiveGrid:
 
 
 
+    def toggle_ai_assistant(self):
+        """Toggle the AI Assistant window visibility."""
+        try:
+            # Check if window exists and is visible
+            state = self.ai_assistant.window.state()
+            if state == 'normal':
+                self.ai_assistant.hide()
+            else:
+                self.ai_assistant.show()
+        except:
+            # If there's an error, recreate the assistant
+            self.ai_assistant = AIAssistant(self.root)
+            self.ai_assistant.show()
+
     def update_movement_speed(self, *args):
         """Update the movement speed when the slider changes."""
         self.movement_speed = self.speed_var.get()
@@ -491,10 +529,20 @@ class InteractiveGrid:
 
 
     def on_algorithm_change(self, *args):
-        """Handle algorithm change."""
+        """Handle algorithm change and update AI assistant with algorithm info."""
         algorithm = self.algorithm_var.get()
         self.current_algorithm = algorithm
         self.update_status(f"Algorithm changed to {algorithm}")
+
+        # If AI assistant is visible, show algorithm explanation
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                explanation = self.ai_assistant.algorithm_explanations.get(algorithm,
+                    f"No specific information available for {algorithm}.")
+                self.ai_assistant.display_message(
+                    f"Algorithm changed to {algorithm}. {explanation}", "assistant")
+        except:
+            pass  # Ignore errors if AI assistant is not available
 
     def update_status(self, message):
         """Update status text."""
@@ -722,6 +770,16 @@ class InteractiveGrid:
         self.total_cells_to_fill = len(self.target_shape)
         self.update_status("Shape changed to rectangle.")
 
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    "Rectangle shape selected. This is a simple 5x4 rectangle placed in the center of the grid. "
+                    "Agents will move to form this shape using the selected pathfinding algorithm.",
+                    "assistant")
+        except:
+            pass
+
     def set_triangle_shape(self):
         """Switch to the triangle shape (if movement hasn't started)."""
         if self.movement_started:
@@ -733,6 +791,16 @@ class InteractiveGrid:
         self.total_cells_to_fill = len(self.target_shape)
         self.update_status("Shape changed to triangle.")
 
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    "Triangle shape selected. This is a triangular shape with a wide base and narrowing toward the top. "
+                    "The triangle has 20 cells arranged in 4 rows. Agents will move to form this shape using the selected algorithm.",
+                    "assistant")
+        except:
+            pass
+
     def set_circle_shape(self):
         """Switch to the circle shape (if movement hasn't started)."""
         if self.movement_started:
@@ -743,6 +811,16 @@ class InteractiveGrid:
         self.draw_green_outline()
         self.total_cells_to_fill = len(self.target_shape)
         self.update_status("Shape changed to circle.")
+
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    "Circle shape selected. This is an oval shape created with a custom pattern of 18 cells. "
+                    "The shape has a hollow center and spans 6 rows. Agents will move to form this shape using the selected algorithm.",
+                    "assistant")
+        except:
+            pass
 
     def start_custom_shape(self):
         """Start custom shape drawing mode."""
@@ -768,6 +846,17 @@ class InteractiveGrid:
 
         # Update status
         self.update_status("Custom shape mode: Click on cells to create your shape. Click 'Finish Custom Shape' when done.")
+
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    "Custom shape mode activated. Click on grid cells to add them to your shape. "
+                    "When you're done, click 'Finish Custom Shape' to set it as the target. "
+                    "Try to create a connected shape for best results.",
+                    "assistant")
+        except:
+            pass
 
     def finish_custom_shape(self):
         """Finish custom shape drawing and apply it."""
@@ -805,6 +894,17 @@ class InteractiveGrid:
         self.draw_green_outline()
         self.total_cells_to_fill = len(self.target_shape)
         self.update_status(f"Custom shape created with {len(self.target_shape)} cells.")
+
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    f"Custom shape created with {len(self.target_shape)} cells. "
+                    f"Click 'Do the Shape' to start the simulation with the {self.current_algorithm} algorithm. "
+                    f"You can also add obstacles before starting.",
+                    "assistant")
+        except:
+            pass
 
     def separate_cells(self, target_cells=None):
         if target_cells is None:
@@ -1059,6 +1159,18 @@ class InteractiveGrid:
         # Update status based on selected mode
         mode = "parallel" if self.parallel_mode else "sequential"
         self.update_status(f"Starting {mode} movement with {self.current_algorithm} algorithm.")
+
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                movement_type = "parallel (all agents move simultaneously)" if self.parallel_mode else "sequential (one agent at a time)"
+                self.ai_assistant.display_message(
+                    f"Starting simulation with {self.current_algorithm} algorithm in {movement_type} mode. "
+                    f"The agents will now find paths to their assigned targets using {self.current_algorithm}. "
+                    f"Watch as they navigate around obstacles and other agents to form the shape.",
+                    "assistant")
+        except:
+            pass
 
         if self.parallel_mode:
             # Start parallel movement
