@@ -165,15 +165,24 @@ class InteractiveGrid:
         self.custom_shape_mode = False
         self.custom_shape = []
 
-        #Parallel Movement
+        #Movement Options
         self.moving_cells = {}
         self.movement_timer = None
+
+        # Create a single variable for movement mode
+        self.movement_mode_var = tk.StringVar(value="sequential")  # Default to sequential
+
+        # Define the possible movement modes
+        self.MOVEMENT_MODES = {
+            "sequential": "Sequential",
+            "parallel": "Parallel",
+            "f1_safety_car": "F1 Safety Car Queue (Decentralized)"
+        }
+
+        # For backward compatibility
         self.parallel_mode = False
-        self.parallel_var = tk.BooleanVar(value=False)
-        self.centralized_mode = True  # Default to centralized
-        self.centralized_var = tk.BooleanVar(value=True)
+        self.centralized_mode = False
         self.parallel_centralized_mode = False
-        self.parallel_centralized_var = tk.BooleanVar(value=False)
         self.deadlock_counter = {}
         self.path_attempts = {}
         self.max_attempts = 3
@@ -345,29 +354,28 @@ class InteractiveGrid:
         algo_menu.pack(side=tk.LEFT, padx=5)
         self.algorithm_var.trace_add("write", self.on_algorithm_change)
 
-        # Create a frame for movement options
-        movement_options_frame = Frame(parent)
+        # Create a frame for movement options with a header
+        movement_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
+        movement_header.pack(fill=tk.X, pady=(10, 0))
+
+        tk.Label(movement_header, text="Movement Mode", font=("Arial", 10, "bold"),
+                bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
+
+        # Create a frame for the radio buttons
+        movement_options_frame = Frame(parent, bg=FRAME_BG)
         movement_options_frame.pack(pady=5, fill=tk.X)
 
-        tk.Label(movement_options_frame, text="Movement Options:").pack(side=tk.LEFT)
-
-        # Parallel movement option
-        parallel_check = tk.Checkbutton(movement_options_frame, text="Parallel Movement",
-                                       variable=self.parallel_var,
-                                       command=self.toggle_parallel_mode)
-        parallel_check.pack(side=tk.LEFT, padx=5)
-
-        # Sequential Centralized option
-        centralized_check = tk.Checkbutton(movement_options_frame, text="Sequential Centralized",
-                                         variable=self.centralized_var,
-                                         command=self.toggle_centralized_mode)
-        centralized_check.pack(side=tk.LEFT, padx=5)
-
-        # Parallel Centralized option
-        parallel_centralized_check = tk.Checkbutton(movement_options_frame, text="Parallel Centralized",
-                                                  variable=self.parallel_centralized_var,
-                                                  command=self.toggle_parallel_centralized_mode)
-        parallel_centralized_check.pack(side=tk.LEFT, padx=5)
+        # Create radio buttons for each movement mode
+        for mode_key, mode_name in self.MOVEMENT_MODES.items():
+            rb = tk.Radiobutton(
+                movement_options_frame,
+                text=mode_name,
+                variable=self.movement_mode_var,
+                value=mode_key,
+                command=self.update_movement_mode,
+                bg=FRAME_BG
+            )
+            rb.pack(anchor=tk.W, padx=10, pady=2)
 
         # Action buttons with section header
         action_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
@@ -490,40 +498,19 @@ class InteractiveGrid:
         # Calculate cell size to fit the grid within MAX_CANVAS_SIZE
         self.cell_size = min(MAX_CANVAS_SIZE // self.grid_size, 40)  # Max cell size is 40 pixels
 
-    def toggle_parallel_mode(self):
-        """Toggle between sequential and parallel movement modes."""
-        self.parallel_mode = self.parallel_var.get()
-        if self.parallel_mode:
-            self.centralized_var.set(False)  # Turn off centralized mode when parallel is enabled
-            self.centralized_mode = False
-        mode_name = "Parallel" if self.parallel_mode else "Sequential"
-        self.update_status(f"Movement mode changed to {mode_name}")
+    def update_movement_mode(self):
+        """Update the movement mode based on the selected radio button."""
+        selected_mode = self.movement_mode_var.get()
 
-    def toggle_centralized_mode(self):
-        """Toggle between centralized and distributed control."""
-        self.centralized_mode = self.centralized_var.get()
-        if self.centralized_mode:
-            self.parallel_var.set(False)  # Turn off parallel mode when centralized is enabled
-            self.parallel_mode = False
-        self.update_status(f"Movement mode changed to {'Sequential Centralized' if self.centralized_mode else 'Distributed'}")
+        # Update the legacy variables for backward compatibility
+        self.parallel_mode = (selected_mode == "parallel")
+        self.centralized_mode = False  # No longer using sequential_centralized
+        self.parallel_centralized_mode = (selected_mode == "f1_safety_car")
 
-    def toggle_parallel_centralized_mode(self):
-        """Toggle between parallel centralized and other movement modes."""
-        self.parallel_centralized_mode = self.parallel_centralized_var.get()
+        # Get the display name of the selected mode
+        mode_display_name = self.MOVEMENT_MODES.get(selected_mode, "Unknown")
 
-        # Debug output
-        self.update_status(f"Parallel Centralized checkbox value: {self.parallel_centralized_var.get()}")
-        self.update_status(f"Setting parallel_centralized_mode to: {self.parallel_centralized_mode}")
-
-        if self.parallel_centralized_mode:
-            # Turn off other modes
-            self.parallel_var.set(False)  # Turn off parallel mode
-            self.parallel_mode = False
-            self.centralized_var.set(False)  # Turn off centralized mode
-            self.centralized_mode = False
-            self.update_status("Disabled other movement modes")
-
-        self.update_status(f"Movement mode changed to {'Parallel Centralized' if self.parallel_centralized_mode else 'Other'}")
+        self.update_status(f"Movement mode changed to {mode_display_name}")
 
     def apply_grid_size(self):
         """Apply the new grid size and reinitialize the grid."""
@@ -831,9 +818,19 @@ class InteractiveGrid:
         return shape
 
     def set_rectangle_shape(self):
-        """Switch to the rectangle shape (if movement hasn't started)."""
-        if self.movement_started:
+        """Switch to the rectangle shape."""
+        # Force reshaping if there are active cells (shape is completed or in progress)
+        active_cells_exist = False
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                active_cells_exist = True
+                break
+
+        if self.movement_started or active_cells_exist:
+            # If movement has started or shape is completed, call reshape
+            self.reshape("rectangle")
             return
+
         self.remove_green_outline()
         self.target_shape = self.define_target_rectangle()
         self.inner_cells, self.outline_cells, self.corner_cells = self.separate_cells()
@@ -852,9 +849,19 @@ class InteractiveGrid:
             pass
 
     def set_triangle_shape(self):
-        """Switch to the triangle shape (if movement hasn't started)."""
-        if self.movement_started:
+        """Switch to the triangle shape."""
+        # Force reshaping if there are active cells (shape is completed or in progress)
+        active_cells_exist = False
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                active_cells_exist = True
+                break
+
+        if self.movement_started or active_cells_exist:
+            # If movement has started or shape is completed, call reshape
+            self.reshape("triangle")
             return
+
         self.remove_green_outline()
         self.target_shape = self.define_target_triangle()
         self.inner_cells, self.outline_cells, self.corner_cells = self.separate_cells()
@@ -873,9 +880,19 @@ class InteractiveGrid:
             pass
 
     def set_circle_shape(self):
-        """Switch to the circle shape (if movement hasn't started)."""
-        if self.movement_started:
+        """Switch to the circle shape."""
+        # Force reshaping if there are active cells (shape is completed or in progress)
+        active_cells_exist = False
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                active_cells_exist = True
+                break
+
+        if self.movement_started or active_cells_exist:
+            # If movement has started or shape is completed, call reshape
+            self.reshape("circle")
             return
+
         self.remove_green_outline()
         self.target_shape = self.define_target_circle()
         self.inner_cells, self.outline_cells, self.corner_cells = self.separate_cells()
@@ -895,7 +912,9 @@ class InteractiveGrid:
 
     def start_custom_shape(self):
         """Start custom shape drawing mode."""
+        # If movement is in progress, we need to pause it
         if self.movement_started:
+            self.update_status("Cannot start custom shape mode while movement is in progress. Please finish or reset first.")
             return
 
         # Clear any existing shape
@@ -931,7 +950,7 @@ class InteractiveGrid:
 
     def finish_custom_shape(self):
         """Finish custom shape drawing and apply it."""
-        if not self.custom_shape_mode or self.movement_started:
+        if not self.custom_shape_mode:
             return
 
         # Exit custom shape mode
@@ -950,6 +969,12 @@ class InteractiveGrid:
         if not self.custom_shape:
             self.set_rectangle_shape()
             self.update_status("No cells selected for custom shape. Reverted to rectangle.")
+            return
+
+        # Check if movement is already in progress
+        if self.movement_started:
+            # Call reshape with the custom shape
+            self.reshape("custom")
             return
 
         # Apply the custom shape
@@ -1238,7 +1263,7 @@ class InteractiveGrid:
         # Update AI assistant if visible
         try:
             if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
-                movement_type = "parallel centralized (F1 safety car queue)" if self.parallel_centralized_mode else "parallel (all agents move simultaneously)" if self.parallel_mode else "sequential (one agent at a time)"
+                movement_type = "decentralized F1 safety car queue" if self.parallel_centralized_mode else "parallel (all agents move simultaneously)" if self.parallel_mode else "sequential (one agent at a time)"
                 self.ai_assistant.display_message(
                     f"Starting simulation with {self.current_algorithm} algorithm in {movement_type} mode. "
                     f"The agents will now find paths to their assigned targets using {self.current_algorithm}. "
@@ -1247,16 +1272,25 @@ class InteractiveGrid:
         except:
             pass
 
-        if self.parallel_centralized_mode:
-            # Start parallel centralized movement (F1 safety car queue)
-            self.update_status("Starting parallel centralized movement (F1 safety car queue)")
+        # Get the current movement mode
+        movement_mode = self.movement_mode_var.get()
+
+        # Update legacy variables for backward compatibility
+        self.parallel_mode = (movement_mode == "parallel")
+        self.centralized_mode = False  # No longer using sequential_centralized
+        self.parallel_centralized_mode = (movement_mode == "f1_safety_car")
+
+        # Start the appropriate movement process based on the selected mode
+        if movement_mode == "f1_safety_car":
+            # Start decentralized F1 safety car queue movement
+            self.update_status("Starting decentralized F1 safety car queue movement")
             self.start_parallel_centralized_movement()
-        elif self.parallel_mode:
+        elif movement_mode == "parallel":
             # Start parallel movement
             self.update_status("Starting parallel movement")
             self.movement_timer = self.root.after(50, self.process_parallel_movements)
         else:
-            # Original sequential movement
+            # Default to sequential movement
             self.update_status(f"Starting sequential movement with {self.current_algorithm} algorithm.")
             self.move_next_square()
 
@@ -1358,7 +1392,7 @@ class InteractiveGrid:
         movements_to_start = []
 
         # First handle priority targets
-        if priority_targets:
+        if priority_targets and available_active_cells:
             self.update_status(f"Handling {len(priority_targets)} priority targets")
             # Sort active cells by distance to priority targets
             sorted_active_cells = sorted(
@@ -1410,10 +1444,14 @@ class InteractiveGrid:
 
         # Process remaining targets normally
         # Sort active cells by distance to any target
-        sorted_active_cells = sorted(
-            available_active_cells,
-            key=lambda cell: min([math.dist(cell, target) for target in remaining_targets])
-        )
+        if remaining_targets:
+            sorted_active_cells = sorted(
+                available_active_cells,
+                key=lambda cell: min([math.dist(cell, target) for target in remaining_targets])
+            )
+        else:
+            # If no remaining targets, just use the original order
+            sorted_active_cells = available_active_cells.copy()
 
         # Process cells in sorted order
         for active_cell in sorted_active_cells:
@@ -1565,6 +1603,24 @@ class InteractiveGrid:
         """Handle the end of all movements."""
         elapsed_time = time.time() - self.start_time
 
+        # Verify agent count if we're in queue mode
+        if hasattr(self, 'queue_agent_count') and hasattr(self, 'queue_positions'):
+            active_agent_count = 0
+            for cell in self.cells:
+                if self.cells[cell]["active"]:
+                    active_agent_count += 1
+
+            expected_agent_count = self.queue_agent_count
+
+            # If we've lost agents, just log it but don't try to recover them
+            if active_agent_count < expected_agent_count:
+                agents_lost = expected_agent_count - active_agent_count
+                self.update_status(f"WARNING: {agents_lost} agents were lost during movement. Active: {active_agent_count}, Expected: {expected_agent_count}")
+
+                # Update the queue agent count to match the actual count
+                self.queue_agent_count = active_agent_count
+                self.update_status("Continuing with the remaining agents without recovery")
+
         if success:
             self.update_status(f"Target shape formation complete in {elapsed_time:.2f}s!")
             self.metrics[self.current_algorithm]["success"] += 1
@@ -1582,6 +1638,145 @@ class InteractiveGrid:
         if self.movement_timer:
             self.root.after_cancel(self.movement_timer)
             self.movement_timer = None
+
+        # Clean up queue-related variables
+        if hasattr(self, 'queue_positions'):
+            del self.queue_positions
+        if hasattr(self, 'queue_completed'):
+            del self.queue_completed
+        if hasattr(self, 'position_history'):
+            del self.position_history
+
+    def reshape(self, shape_type):
+        """Handle reshaping from one shape to another without resetting."""
+        # Cancel any pending movement timer
+        if self.movement_timer:
+            self.root.after_cancel(self.movement_timer)
+            self.movement_timer = None
+
+        # Count how many agents we should have
+        expected_agent_count = self.agent_count
+        self.update_status(f"Expected agent count: {expected_agent_count}")
+
+        # Get all current active cells (agents)
+        current_active_cells = []
+
+        # First, collect all cells that are part of the current shape
+        current_shape_cells = []
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                current_shape_cells.append(cell)
+
+        self.update_status(f"Found {len(current_shape_cells)} cells in the current shape.")
+
+        # Include cells that are in the middle of movement
+        moving_cells = []
+        for move_id, (path, index, target, start_cell) in self.moving_cells.items():
+            # Get current position of moving cell
+            current_pos = path[index - 1] if index > 0 else start_cell
+            if current_pos not in moving_cells:
+                moving_cells.append(current_pos)
+
+        self.update_status(f"Found {len(moving_cells)} cells that are currently moving.")
+
+        # Combine all cells
+        for cell in current_shape_cells:
+            if cell not in current_active_cells:
+                current_active_cells.append(cell)
+
+        for cell in moving_cells:
+            if cell not in current_active_cells:
+                current_active_cells.append(cell)
+
+        # Check if we have the expected number of agents
+        if len(current_active_cells) < expected_agent_count:
+            self.update_status(f"Warning: Found only {len(current_active_cells)} agents, expected {expected_agent_count}.")
+
+            # If we don't have enough agents, we need to recreate them
+            # First, let's check if we need to add more agents
+            if len(current_active_cells) < expected_agent_count:
+                # We need to add more agents
+                agents_to_add = expected_agent_count - len(current_active_cells)
+                self.update_status(f"Adding {agents_to_add} new agents.")
+
+                # Find empty cells that are not in the target shape or obstacles
+                empty_cells = []
+                for cell in self.cells:
+                    if (not self.cells[cell]["active"] and
+                        not self.cells[cell]["obstacle"] and
+                        cell not in self.target_shape and
+                        cell not in current_active_cells):
+                        empty_cells.append(cell)
+
+                # Add new agents
+                for i in range(min(agents_to_add, len(empty_cells))):
+                    current_active_cells.append(empty_cells[i])
+
+        # Store the current active cells before deactivating them
+        self.update_status(f"Preparing to reshape with {len(current_active_cells)} agents.")
+
+        # Deactivate all cells in the grid
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                # Deactivate the cell in the grid
+                self.cells[cell]["active"] = False
+                self.canvas.itemconfig(self.cells[cell]["rect"], fill=INACTIVE_COLOR)
+
+        # Clear movement-related data structures
+        self.moving_cells = {}
+        self.deadlock_counter = {}
+        self.path_attempts = {}
+        self.reserved_cells = set()
+
+        # Update the target shape based on the shape type
+        self.remove_green_outline()
+        if shape_type == "rectangle":
+            self.target_shape = self.define_target_rectangle()
+            shape_name = "rectangle"
+        elif shape_type == "triangle":
+            self.target_shape = self.define_target_triangle()
+            shape_name = "triangle"
+        elif shape_type == "circle":
+            self.target_shape = self.define_target_circle()
+            shape_name = "circle"
+        elif shape_type == "custom":
+            # Use the existing custom shape
+            self.target_shape = self.custom_shape.copy()
+            shape_name = "custom shape"
+        else:
+            # Default to rectangle if shape type is not recognized
+            self.target_shape = self.define_target_rectangle()
+            shape_name = "rectangle"
+
+        # Update shape-related properties
+        self.inner_cells, self.outline_cells, self.corner_cells = self.separate_cells()
+        self.draw_green_outline()
+        self.total_cells_to_fill = len(self.target_shape)
+
+        # Update active cells
+        self.active_cells = current_active_cells
+
+        # Reset movement state
+        self.movement_started = False
+
+        # Make sure the "Do the Shape" button is enabled
+        self.do_shape_btn.config(state=tk.NORMAL)
+
+        # Update status
+        self.update_status(f"Reshaping to {shape_name}. {len(current_active_cells)} agents available.")
+
+        # Start the movement process
+        self.start_movement()
+
+        # Update AI assistant if visible
+        try:
+            if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
+                self.ai_assistant.display_message(
+                    f"Reshaping to {shape_name}. The agents will now reorganize to form the new shape "
+                    f"using the {self.current_algorithm} algorithm.",
+                    "assistant")
+        except:
+            pass
 
     def detect_and_resolve_deadlocks(self):
         """Enhanced deadlock detection and resolution."""
@@ -2241,13 +2436,12 @@ class InteractiveGrid:
 
     def start_parallel_centralized_movement(self):
         """
-        Start the worm-like movement pattern where:
-        1. The head (leader) goes to the hardest cell to reach
-        2. The tail (last cell) goes to the easiest cell to reach
-        3. All cells in between follow in order of difficulty
-        4. Each cell follows the exact path of the cell ahead of it
+        Start the worm-like movement pattern (F1 safety car queue) with decentralized decision making:
+        1. Each agent independently selects its own target
+        2. Agents still move in a queue formation (following the agent ahead)
+        3. The queue structure is maintained but decisions are decentralized
         """
-        self.update_status("Starting worm-like movement pattern")
+        self.update_status("Starting decentralized F1 safety car queue movement pattern")
 
         # Step 1: Scan all orange cells and all free target cells
         active_cells = self.active_cells.copy()
@@ -2261,115 +2455,139 @@ class InteractiveGrid:
             self.finish_movement(success=False)
             return
 
-        # Find the cell that will be the head of our worm
-        # We'll use the cell that can reach any target with the shortest path
-        best_head_cell = None
-        min_distance_to_any_target = float('inf')
+        # In decentralized mode, each agent selects its own target based on proximity
+        # We'll still maintain a queue structure, but each agent makes its own decision
 
-        for active_cell in active_cells:
-            for target in remaining_targets:
-                path = self.find_path(active_cell, target)
-                if path and len(path) < min_distance_to_any_target:
-                    min_distance_to_any_target = len(path)
-                    best_head_cell = active_cell
-
-        if not best_head_cell:
-            self.update_status("No valid paths found from any active cell to any target")
-            self.finish_movement(success=False)
-            return
-
-        self.update_status(f"Worm head selected: {best_head_cell}")
-
-        # Step 2: Determine the hardness of each target cell from the head's position
-        target_hardness = {}
-        target_paths = {}
-
-        for target in remaining_targets:
-            path = self.find_path(best_head_cell, target)
-            if path:
-                target_hardness[target] = len(path)
-                target_paths[target] = path
-            else:
-                target_hardness[target] = float('inf')
-
-        # Sort targets by hardness (hardest first)
-        sorted_targets = sorted(target_hardness.keys(), key=lambda t: -target_hardness[t])
-
-        if not sorted_targets or all(target_hardness[t] == float('inf') for t in sorted_targets):
-            self.update_status("No valid paths found from worm head to any target")
-            self.finish_movement(success=False)
-            return
-
-        # Remove unreachable targets
-        sorted_targets = [t for t in sorted_targets if target_hardness[t] != float('inf')]
-
-        if not sorted_targets:
-            self.update_status("No reachable targets found")
-            self.finish_movement(success=False)
-            return
-
-        self.update_status(f"Targets sorted by difficulty (hardest first): {sorted_targets}")
-
-        # Step 3: Create the worm
-        # The head goes to the hardest target
-        # The tail goes to the easiest target
-        # Cells in between go to targets in order of difficulty
+        # Step 2: Create the queue structure
         self.queue_assignments = []
 
-        # First, assign the head to the hardest target
-        hardest_target = sorted_targets[0]
-        head_path = target_paths.get(hardest_target)
+        # First, select a leader (head) for the queue
+        # We'll use the cell that is closest to any target
+        best_head_cell = None
+        min_distance = float('inf')
 
-        if not head_path:
-            self.update_status("Worm head cannot reach the hardest target")
+        for cell in active_cells:
+            for target in remaining_targets:
+                distance = math.dist(cell, target)
+                if distance < min_distance:
+                    min_distance = distance
+                    best_head_cell = cell
+
+        if not best_head_cell:
+            self.update_status("No suitable head cell found")
             self.finish_movement(success=False)
             return
 
-        self.queue_assignments.append((best_head_cell, hardest_target, head_path))
+        self.update_status(f"Selected head cell: {best_head_cell}")
+
+        # Now, each agent independently selects its own target based on proximity
+        # The head selects first
+        head_target = None
+        min_distance = float('inf')
+        head_path = None
+
+        for target in remaining_targets:
+            distance = math.dist(best_head_cell, target)
+            path = self.find_path(best_head_cell, target)
+            if path and distance < min_distance:
+                min_distance = distance
+                head_target = target
+                head_path = path
+
+        if not head_target:
+            self.update_status("Head cell cannot reach any target")
+            self.finish_movement(success=False)
+            return
+
+        # Add the head to the queue
+        self.queue_assignments.append((best_head_cell, head_target, head_path))
+
+        # Remove the head's target from available targets
+        remaining_targets = [t for t in remaining_targets if t != head_target]
 
         # Remove the head from active cells
         remaining_active_cells = [cell for cell in active_cells if cell != best_head_cell]
 
         # Sort remaining active cells by distance to the head
-        # This ensures cells that are closer to the head are earlier in the worm
+        # This ensures cells that are closer to the head are earlier in the queue
         sorted_active_cells = sorted(remaining_active_cells,
                                     key=lambda cell: math.dist(cell, best_head_cell))
 
-        # Assign remaining cells to targets in order of hardness
-        # The cell right after the head gets the second hardest target, and so on
-        for i, active_cell in enumerate(sorted_active_cells):
-            if i < len(sorted_targets) - 1:
-                # Assign this cell to the corresponding target by difficulty
-                target_idx = i + 1  # Skip the hardest target (already assigned to head)
-                target = sorted_targets[target_idx]
-                self.queue_assignments.append((active_cell, target, None))
+        # Each remaining agent selects its own target based on proximity
+        for active_cell in sorted_active_cells:
+            # Find the closest available target for this agent
+            best_target = None
+            min_distance = float('inf')
+
+            for target in remaining_targets:
+                distance = math.dist(active_cell, target)
+                if distance < min_distance:
+                    min_distance = distance
+                    best_target = target
+
+            if best_target:
+                # Add this agent to the queue with its selected target
+                self.queue_assignments.append((active_cell, best_target, None))
+                # Remove this target from available targets
+                remaining_targets = [t for t in remaining_targets if t != best_target]
             else:
-                # If we have more cells than targets, assign extras to the easiest target
-                target = sorted_targets[-1]
-                self.queue_assignments.append((active_cell, target, None))
+                # If no target is available, assign to a random target
+                if remaining_targets:
+                    random_target = remaining_targets[0]
+                    self.queue_assignments.append((active_cell, random_target, None))
+                    remaining_targets = remaining_targets[1:]
+                else:
+                    # If all targets are assigned, this agent will follow without a specific target
+                    # It will just follow the queue
+                    self.queue_assignments.append((active_cell, None, None))
 
         self.update_status(f"Worm created with {len(self.queue_assignments)} segments")
 
-        # Initialize worm movement
+        # Initialize queue movement
         self.queue_leader_index = 0
         self.queue_positions = {cell: cell for cell, _, _ in self.queue_assignments}
         self.queue_completed = set()
 
-        # Initialize position history for worm movement
+        # Keep track of the total number of agents for verification
+        self.queue_agent_count = len(self.queue_assignments)
+        self.update_status(f"Total agents in queue: {self.queue_agent_count}")
+
+        # Initialize position history for queue movement
         self.position_history = {}
         for cell, _, _ in self.queue_assignments:
             self.position_history[cell] = [self.queue_positions[cell]]
+
+        # Create a backup of active cells for recovery if needed
+        self.queue_active_cells_backup = self.active_cells.copy()
 
         # Start the worm movement
         self.movement_timer = self.root.after(50, self.process_queue_movement)
 
     def process_queue_movement(self):
         """
-        Process the worm-like movement where:
-        1. The head moves along its path to the hardest target
-        2. Each segment follows the exact path of the segment ahead of it
-        3. The tail (last segment) eventually reaches the easiest target
+        Process the decentralized F1 safety car queue movement where:
+        1. The head moves along its path to its selected target
+        2. Each segment follows the segment ahead of it, but has its own target
+        3. Agents make independent decisions but maintain the queue formation
         """
+        # Verify that we haven't lost any agents
+        active_agent_count = 0
+        for cell in self.cells:
+            if self.cells[cell]["active"]:
+                active_agent_count += 1
+
+        completed_agent_count = len(self.queue_completed)
+        expected_agent_count = self.queue_agent_count
+
+        # If we've lost agents, log it and update the expected count
+        if active_agent_count + completed_agent_count < expected_agent_count:
+            agents_lost = expected_agent_count - (active_agent_count + completed_agent_count)
+            self.update_status(f"WARNING: {agents_lost} agents were lost! Active: {active_agent_count}, Completed: {completed_agent_count}, Expected: {expected_agent_count}")
+
+            # Update the expected count to match reality
+            self.queue_agent_count = active_agent_count + completed_agent_count
+            self.update_status("Continuing with the remaining agents without recovery")
+
         # Check if we're done
         if len(self.queue_completed) == len(self.queue_assignments):
             self.finish_movement(success=True)
@@ -2490,15 +2708,24 @@ class InteractiveGrid:
         # Continue the movement
         self.movement_timer = self.root.after(self.movement_speed, self.process_queue_movement)
 
-    def move_cell_animation(self, _, from_pos, to_pos):
+    def move_cell_animation(self, cell_id, from_pos, to_pos):
         """
         Animate a cell moving from one position to another.
 
         Args:
-            _: Unused parameter (cell identifier)
+            cell_id: The cell identifier (used for tracking)
             from_pos: The position to move from
             to_pos: The position to move to
         """
+        # Verify positions are valid
+        if from_pos not in self.cells or to_pos not in self.cells:
+            self.update_status(f"WARNING: Invalid position in move_cell_animation: from={from_pos}, to={to_pos}")
+            return
+
+        # Check if the target position is already active (occupied by another agent)
+        if self.cells[to_pos]["active"] and to_pos != from_pos:
+            self.update_status(f"WARNING: Target position {to_pos} is already active!")
+
         # Deactivate the previous position
         if from_pos in self.cells:
             self.cells[from_pos]["active"] = False
@@ -2508,6 +2735,10 @@ class InteractiveGrid:
         if to_pos in self.cells:
             self.cells[to_pos]["active"] = True
             self.canvas.itemconfig(self.cells[to_pos]["rect"], fill=ACTIVE_COLOR)
+
+        # Update the position in our tracking dictionaries
+        if hasattr(self, 'queue_positions') and cell_id in self.queue_positions:
+            self.queue_positions[cell_id] = to_pos
 
     def find_path_batch(self, start, goal):
         """Fast pathfinding version without visualization for batch testing."""
