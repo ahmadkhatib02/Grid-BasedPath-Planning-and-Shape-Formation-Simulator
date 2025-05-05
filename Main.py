@@ -170,6 +170,10 @@ class InteractiveGrid:
         self.movement_timer = None
         self.parallel_mode = False
         self.parallel_var = tk.BooleanVar(value=False)
+        self.centralized_mode = True  # Default to centralized
+        self.centralized_var = tk.BooleanVar(value=True)
+        self.parallel_centralized_mode = False
+        self.parallel_centralized_var = tk.BooleanVar(value=False)
         self.deadlock_counter = {}
         self.path_attempts = {}
         self.max_attempts = 3
@@ -353,11 +357,17 @@ class InteractiveGrid:
                                        command=self.toggle_parallel_mode)
         parallel_check.pack(side=tk.LEFT, padx=5)
 
-        # Agent control mode option - COMMENTED OUT FOR NOW
-        # centralized_check = tk.Checkbutton(movement_options_frame, text="Centralized Control",
-        #                                  variable=self.centralized_var,
-        #                                  command=self.toggle_centralized_mode)
-        # centralized_check.pack(side=tk.LEFT, padx=5)
+        # Sequential Centralized option
+        centralized_check = tk.Checkbutton(movement_options_frame, text="Sequential Centralized",
+                                         variable=self.centralized_var,
+                                         command=self.toggle_centralized_mode)
+        centralized_check.pack(side=tk.LEFT, padx=5)
+
+        # Parallel Centralized option
+        parallel_centralized_check = tk.Checkbutton(movement_options_frame, text="Parallel Centralized",
+                                                  variable=self.parallel_centralized_var,
+                                                  command=self.toggle_parallel_centralized_mode)
+        parallel_centralized_check.pack(side=tk.LEFT, padx=5)
 
         # Action buttons with section header
         action_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
@@ -483,14 +493,37 @@ class InteractiveGrid:
     def toggle_parallel_mode(self):
         """Toggle between sequential and parallel movement modes."""
         self.parallel_mode = self.parallel_var.get()
+        if self.parallel_mode:
+            self.centralized_var.set(False)  # Turn off centralized mode when parallel is enabled
+            self.centralized_mode = False
         mode_name = "Parallel" if self.parallel_mode else "Sequential"
         self.update_status(f"Movement mode changed to {mode_name}")
 
-    # def toggle_centralized_mode(self):
-    #     """Toggle between centralized and distributed agent control."""
-    #     self.centralized_mode = self.centralized_var.get()
-    #     mode_name = "Centralized" if self.centralized_mode else "Distributed"
-    #     self.update_status(f"Agent control mode changed to {mode_name}")
+    def toggle_centralized_mode(self):
+        """Toggle between centralized and distributed control."""
+        self.centralized_mode = self.centralized_var.get()
+        if self.centralized_mode:
+            self.parallel_var.set(False)  # Turn off parallel mode when centralized is enabled
+            self.parallel_mode = False
+        self.update_status(f"Movement mode changed to {'Sequential Centralized' if self.centralized_mode else 'Distributed'}")
+
+    def toggle_parallel_centralized_mode(self):
+        """Toggle between parallel centralized and other movement modes."""
+        self.parallel_centralized_mode = self.parallel_centralized_var.get()
+
+        # Debug output
+        self.update_status(f"Parallel Centralized checkbox value: {self.parallel_centralized_var.get()}")
+        self.update_status(f"Setting parallel_centralized_mode to: {self.parallel_centralized_mode}")
+
+        if self.parallel_centralized_mode:
+            # Turn off other modes
+            self.parallel_var.set(False)  # Turn off parallel mode
+            self.parallel_mode = False
+            self.centralized_var.set(False)  # Turn off centralized mode
+            self.centralized_mode = False
+            self.update_status("Disabled other movement modes")
+
+        self.update_status(f"Movement mode changed to {'Parallel Centralized' if self.parallel_centralized_mode else 'Other'}")
 
     def apply_grid_size(self):
         """Apply the new grid size and reinitialize the grid."""
@@ -1176,6 +1209,7 @@ class InteractiveGrid:
     def start_movement(self):
         """Start the movement of active cells to form the target shape."""
         if self.movement_started or not self.active_cells:
+            self.update_status("Cannot start movement: either movement already started or no active cells")
             return
 
         self.movement_started = True
@@ -1189,19 +1223,22 @@ class InteractiveGrid:
             if cell in self.cells and not self.cells[cell]["active"] and not self.cells[cell]["obstacle"]:
                 self.canvas.itemconfig(self.cells[cell]["rect"], fill=INACTIVE_COLOR)
 
-        # Initialize metrics for this run
+        # Assign targets to active cells
+        self.assign_targets()
+
+        # Start timing
         self.start_time = time.time()
         self.cells_filled = 0
-        self.moving_cells = {}
 
-        # Update status based on selected mode
-        mode = "parallel" if self.parallel_mode else "sequential"
-        self.update_status(f"Starting {mode} movement with {self.current_algorithm} algorithm.")
+        # Debug output for movement modes
+        self.update_status(f"Parallel mode: {self.parallel_mode}")
+        self.update_status(f"Centralized mode: {self.centralized_mode}")
+        self.update_status(f"Parallel Centralized mode: {self.parallel_centralized_mode}")
 
         # Update AI assistant if visible
         try:
             if hasattr(self, 'ai_assistant') and self.ai_assistant.window.state() == 'normal':
-                movement_type = "parallel (all agents move simultaneously)" if self.parallel_mode else "sequential (one agent at a time)"
+                movement_type = "parallel centralized (F1 safety car queue)" if self.parallel_centralized_mode else "parallel (all agents move simultaneously)" if self.parallel_mode else "sequential (one agent at a time)"
                 self.ai_assistant.display_message(
                     f"Starting simulation with {self.current_algorithm} algorithm in {movement_type} mode. "
                     f"The agents will now find paths to their assigned targets using {self.current_algorithm}. "
@@ -1210,12 +1247,17 @@ class InteractiveGrid:
         except:
             pass
 
-        if self.parallel_mode:
+        if self.parallel_centralized_mode:
+            # Start parallel centralized movement (F1 safety car queue)
+            self.update_status("Starting parallel centralized movement (F1 safety car queue)")
+            self.start_parallel_centralized_movement()
+        elif self.parallel_mode:
             # Start parallel movement
+            self.update_status("Starting parallel movement")
             self.movement_timer = self.root.after(50, self.process_parallel_movements)
         else:
             # Original sequential movement
-            self.update_status(f"Starting movement with {self.current_algorithm} algorithm.")
+            self.update_status(f"Starting sequential movement with {self.current_algorithm} algorithm.")
             self.move_next_square()
 
     def process_parallel_movements(self):
@@ -2194,120 +2236,278 @@ class InteractiveGrid:
         self.movement_started = True
         self.cells_filled = 0
 
-        # Stats to track
-        total_path_length = 0
-        total_cells_explored = 0
-        num_moves = 0
-
         # Start time for the entire simulation
-        sim_start_time = time.time()
+        self.sim_start_time = time.time()
 
-        while True:
-            # Check for completion or failure
-            if not self.active_cells:
-                # Calculate success rate based on completed targets
-                remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
-                completed_targets = len(self.target_shape) - len(remaining_targets)
-                total_targets = len(self.target_shape)
-                success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+    def start_parallel_centralized_movement(self):
+        """
+        Start the worm-like movement pattern where:
+        1. The head (leader) goes to the hardest cell to reach
+        2. The tail (last cell) goes to the easiest cell to reach
+        3. All cells in between follow in order of difficulty
+        4. Each cell follows the exact path of the cell ahead of it
+        """
+        self.update_status("Starting worm-like movement pattern")
 
-                # Update metrics
-                self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
-                self.metrics[self.current_algorithm]["total_targets"] = total_targets
-                self.metrics[self.current_algorithm]["success_rate"] = success_rate
-                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+        # Step 1: Scan all orange cells and all free target cells
+        active_cells = self.active_cells.copy()
+        remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
 
-                return False, {
-                    "path_length": total_path_length,
-                    "explored": total_cells_explored,
-                    "moves": num_moves,
-                    "success_rate": success_rate
-                }
+        if not remaining_targets:
+            self.finish_movement(success=True)
+            return
 
-            remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
-            if not remaining_targets:
-                # All targets completed - 100% success rate
-                total_targets = len(self.target_shape)
+        if not active_cells:
+            self.finish_movement(success=False)
+            return
 
-                # Update metrics
-                self.metrics[self.current_algorithm]["completed_targets"] = total_targets
-                self.metrics[self.current_algorithm]["total_targets"] = total_targets
-                self.metrics[self.current_algorithm]["success_rate"] = 100.0
-                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+        # Find the cell that will be the head of our worm
+        # We'll use the cell that can reach any target with the shortest path
+        best_head_cell = None
+        min_distance_to_any_target = float('inf')
 
-                return True, {
-                    "path_length": total_path_length,
-                    "explored": total_cells_explored,
-                    "moves": num_moves,
-                    "success_rate": 100.0
-                }
-
-            # Calculate minimal path lengths for each target
-            target_costs = {}
-            target_paths = {}
-            target_explored = {}
-
+        for active_cell in active_cells:
             for target in remaining_targets:
-                min_length = float('inf')
-                best_path = None
-                best_explored = 0
-                best_active = None
+                path = self.find_path(active_cell, target)
+                if path and len(path) < min_distance_to_any_target:
+                    min_distance_to_any_target = len(path)
+                    best_head_cell = active_cell
 
-                for active in self.active_cells:
-                    path, explored = self.find_path_batch(active, target)
-                    if path and len(path) < min_length:
-                        min_length = len(path)
-                        best_path = path
-                        best_explored = explored
-                        best_active = active
+        if not best_head_cell:
+            self.update_status("No valid paths found from any active cell to any target")
+            self.finish_movement(success=False)
+            return
 
-                if min_length != float('inf'):
-                    target_costs[target] = min_length
-                    target_paths[target] = (best_path, best_active, best_explored)
-                    target_explored[target] = best_explored
+        self.update_status(f"Worm head selected: {best_head_cell}")
 
-            if not target_costs:
-                # Calculate success rate based on completed targets
-                remaining_targets = [cell for cell in self.target_shape if not self.cells[cell]["active"]]
-                completed_targets = len(self.target_shape) - len(remaining_targets)
-                total_targets = len(self.target_shape)
-                success_rate = (1 - (len(remaining_targets) / total_targets)) * 100 if total_targets > 0 else 0
+        # Step 2: Determine the hardness of each target cell from the head's position
+        target_hardness = {}
+        target_paths = {}
 
-                # Update metrics
-                self.metrics[self.current_algorithm]["completed_targets"] = completed_targets
-                self.metrics[self.current_algorithm]["total_targets"] = total_targets
-                self.metrics[self.current_algorithm]["success_rate"] = success_rate
-                self.metrics[self.current_algorithm]["time"] += time.time() - sim_start_time
+        for target in remaining_targets:
+            path = self.find_path(best_head_cell, target)
+            if path:
+                target_hardness[target] = len(path)
+                target_paths[target] = path
+            else:
+                target_hardness[target] = float('inf')
 
-                return False, {
-                    "path_length": total_path_length,
-                    "explored": total_cells_explored,
-                    "moves": num_moves,
-                    "success_rate": success_rate
-                }
+        # Sort targets by hardness (hardest first)
+        sorted_targets = sorted(target_hardness.keys(), key=lambda t: -target_hardness[t])
 
-            # Select the hardest target
-            hardest_target = max(target_costs, key=lambda k: target_costs[k])
+        if not sorted_targets or all(target_hardness[t] == float('inf') for t in sorted_targets):
+            self.update_status("No valid paths found from worm head to any target")
+            self.finish_movement(success=False)
+            return
 
-            # Get the path and stats
-            best_path, selected_active, explored = target_paths[hardest_target]
+        # Remove unreachable targets
+        sorted_targets = [t for t in sorted_targets if target_hardness[t] != float('inf')]
 
-            # Update stats
-            total_path_length += len(best_path)
-            total_cells_explored += explored
-            num_moves += 1
+        if not sorted_targets:
+            self.update_status("No reachable targets found")
+            self.finish_movement(success=False)
+            return
 
-            # Update metrics
-            self.metrics[self.current_algorithm]["path_length"] += len(best_path)
-            self.metrics[self.current_algorithm]["explored"] += explored
-            self.metrics[self.current_algorithm]["moves"] += 1
+        self.update_status(f"Targets sorted by difficulty (hardest first): {sorted_targets}")
 
-            # Move agent (without animation)
-            self.active_cells.remove(selected_active)
+        # Step 3: Create the worm
+        # The head goes to the hardest target
+        # The tail goes to the easiest target
+        # Cells in between go to targets in order of difficulty
+        self.queue_assignments = []
 
-            # Mark target as active
-            self.cells[hardest_target]["active"] = True
-            self.cells_filled += 1
+        # First, assign the head to the hardest target
+        hardest_target = sorted_targets[0]
+        head_path = target_paths.get(hardest_target)
+
+        if not head_path:
+            self.update_status("Worm head cannot reach the hardest target")
+            self.finish_movement(success=False)
+            return
+
+        self.queue_assignments.append((best_head_cell, hardest_target, head_path))
+
+        # Remove the head from active cells
+        remaining_active_cells = [cell for cell in active_cells if cell != best_head_cell]
+
+        # Sort remaining active cells by distance to the head
+        # This ensures cells that are closer to the head are earlier in the worm
+        sorted_active_cells = sorted(remaining_active_cells,
+                                    key=lambda cell: math.dist(cell, best_head_cell))
+
+        # Assign remaining cells to targets in order of hardness
+        # The cell right after the head gets the second hardest target, and so on
+        for i, active_cell in enumerate(sorted_active_cells):
+            if i < len(sorted_targets) - 1:
+                # Assign this cell to the corresponding target by difficulty
+                target_idx = i + 1  # Skip the hardest target (already assigned to head)
+                target = sorted_targets[target_idx]
+                self.queue_assignments.append((active_cell, target, None))
+            else:
+                # If we have more cells than targets, assign extras to the easiest target
+                target = sorted_targets[-1]
+                self.queue_assignments.append((active_cell, target, None))
+
+        self.update_status(f"Worm created with {len(self.queue_assignments)} segments")
+
+        # Initialize worm movement
+        self.queue_leader_index = 0
+        self.queue_positions = {cell: cell for cell, _, _ in self.queue_assignments}
+        self.queue_completed = set()
+
+        # Initialize position history for worm movement
+        self.position_history = {}
+        for cell, _, _ in self.queue_assignments:
+            self.position_history[cell] = [self.queue_positions[cell]]
+
+        # Start the worm movement
+        self.movement_timer = self.root.after(50, self.process_queue_movement)
+
+    def process_queue_movement(self):
+        """
+        Process the worm-like movement where:
+        1. The head moves along its path to the hardest target
+        2. Each segment follows the exact path of the segment ahead of it
+        3. The tail (last segment) eventually reaches the easiest target
+        """
+        # Check if we're done
+        if len(self.queue_completed) == len(self.queue_assignments):
+            self.finish_movement(success=True)
+            return
+
+        # Get all cells that haven't reached their targets yet
+        active_queue_cells = [(i, cell, target, path) for i, (cell, target, path) in enumerate(self.queue_assignments)
+                             if cell not in self.queue_completed]
+
+        if not active_queue_cells:
+            self.finish_movement(success=True)
+            return
+
+        # Get the head of the worm (first cell in the queue)
+        head_idx, head_cell, head_target, head_path = active_queue_cells[0]
+
+        # Store the head's current position
+        current_head_pos = self.queue_positions[head_cell]
+
+        # If head's path is not set or needs recalculation, calculate it
+        if not head_path:
+            head_path = self.find_path(current_head_pos, head_target)
+            self.queue_assignments[head_idx] = (head_cell, head_target, head_path)
+
+            # If no path found, mark as completed and select new head
+            if not head_path:
+                self.queue_completed.add(head_cell)
+                self.movement_timer = self.root.after(self.movement_speed, self.process_queue_movement)
+                return
+
+        # Move the head first
+        if len(head_path) > 0:
+            next_head_pos = head_path[0]
+
+            # Debug output
+            self.update_status(f"Moving worm head from {current_head_pos} to {next_head_pos}")
+
+            # Move the head
+            self.move_cell_animation(head_cell, current_head_pos, next_head_pos)
+
+            # Update the head's position
+            self.queue_positions[head_cell] = next_head_pos
+
+            # Add the new position to the head's history
+            self.position_history[head_cell].append(next_head_pos)
+
+            # Keep history at a reasonable length
+            if len(self.position_history[head_cell]) > 100:
+                self.position_history[head_cell] = self.position_history[head_cell][-100:]
+
+            # Update the head's path for next time
+            self.queue_assignments[head_idx] = (
+                head_cell,
+                head_target,
+                head_path[1:] if len(head_path) > 1 else []
+            )
+
+            # If head reached target, mark as completed
+            if next_head_pos == head_target:
+                self.queue_completed.add(head_cell)
+                self.cells[next_head_pos]["active"] = True
+                self.cells_filled += 1
+                self.update_metrics_display()
+
+                # If the head has completed, we need to promote the next cell to head
+                if len(active_queue_cells) > 1:
+                    next_head_idx, next_head_cell, next_head_target, _ = active_queue_cells[1]
+                    # Calculate path for the new head
+                    next_head_path = self.find_path(self.queue_positions[next_head_cell], next_head_target)
+                    self.queue_assignments[next_head_idx] = (next_head_cell, next_head_target, next_head_path)
+
+        # Now move each segment of the worm to follow the segment ahead of it
+        for i in range(1, len(active_queue_cells)):
+            _, follower_cell, follower_target, _ = active_queue_cells[i]
+
+            # Get current position of this segment
+            current_pos = self.queue_positions[follower_cell]
+
+            # Get the cell ahead in the worm
+            cell_ahead = active_queue_cells[i-1][1]
+
+            # Get the previous position of the cell ahead (where it just moved from)
+            if len(self.position_history[cell_ahead]) >= 2:
+                # The position before the current one is where the cell ahead just moved from
+                prev_ahead_pos = self.position_history[cell_ahead][-2]
+
+                # Check if the follower can move to this position
+                is_valid = (
+                    not self.cells[prev_ahead_pos]["obstacle"] and
+                    not self.cells[prev_ahead_pos]["active"] and
+                    prev_ahead_pos != current_pos and  # Don't stay in place
+                    prev_ahead_pos not in [self.queue_positions[c] for c, _, _ in self.queue_assignments
+                                          if c != follower_cell and c not in self.queue_completed]
+                )
+
+                if is_valid:
+                    # Debug output
+                    self.update_status(f"Moving worm segment from {current_pos} to {prev_ahead_pos}")
+
+                    # Move the follower to where the cell ahead just was
+                    self.move_cell_animation(follower_cell, current_pos, prev_ahead_pos)
+                    self.queue_positions[follower_cell] = prev_ahead_pos
+
+                    # Add the new position to the follower's history
+                    self.position_history[follower_cell].append(prev_ahead_pos)
+
+                    # Keep history at a reasonable length
+                    if len(self.position_history[follower_cell]) > 100:
+                        self.position_history[follower_cell] = self.position_history[follower_cell][-100:]
+
+                    # If follower reached target, mark as completed
+                    if prev_ahead_pos == follower_target:
+                        self.queue_completed.add(follower_cell)
+                        self.cells[prev_ahead_pos]["active"] = True
+                        self.cells_filled += 1
+                        self.update_metrics_display()
+
+        # Continue the movement
+        self.movement_timer = self.root.after(self.movement_speed, self.process_queue_movement)
+
+    def move_cell_animation(self, _, from_pos, to_pos):
+        """
+        Animate a cell moving from one position to another.
+
+        Args:
+            _: Unused parameter (cell identifier)
+            from_pos: The position to move from
+            to_pos: The position to move to
+        """
+        # Deactivate the previous position
+        if from_pos in self.cells:
+            self.cells[from_pos]["active"] = False
+            self.canvas.itemconfig(self.cells[from_pos]["rect"], fill=INACTIVE_COLOR)
+
+        # Activate the new position
+        if to_pos in self.cells:
+            self.cells[to_pos]["active"] = True
+            self.canvas.itemconfig(self.cells[to_pos]["rect"], fill=ACTIVE_COLOR)
 
     def find_path_batch(self, start, goal):
         """Fast pathfinding version without visualization for batch testing."""
