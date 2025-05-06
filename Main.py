@@ -9,28 +9,25 @@ from AIAssistant import AIAssistant
 from Simple_MARL_Integration import integrate_marl_with_app, do_shape_with_marl
 from Simple_GA_Integration import integrate_ga_with_app, do_shape_with_ga
 
-# Grid settings
-DEFAULT_GRID_SIZE = 10  # Default grid size
-MAX_CANVAS_SIZE = 600   # Maximum canvas size in pixels
-# Colors - Modern UI Color Scheme
-GRID_COLOR = "#95A5A6"  # Medium gray
-ACTIVE_COLOR = "#FF9500"  # Bright orange
-INACTIVE_COLOR = "#F5F5F5"  # Light gray
-OBSTACLE_COLOR = "#2C3E50"  # Dark blue-gray
-OUTLINE_COLOR = "#2ECC71"  # Bright green
-PATH_COLOR = "#3498DB"  # Bright blue
-MINIMAX_COLOR = "#9B59B6"  # Purple
-ALPHA_BETA_COLOR = "#E74C3C"  # Red
-EXPECTIMAX_COLOR = "#1ABC9C"  # Teal
+DEFAULT_GRID_SIZE = 10
+MAX_CANVAS_SIZE = 600
+GRID_COLOR = "#95A5A6"
+ACTIVE_COLOR = "#FF9500"
+INACTIVE_COLOR = "#F5F5F5"
+OBSTACLE_COLOR = "#2C3E50"
+OUTLINE_COLOR = "#2ECC71"
+PATH_COLOR = "#3498DB"
+MINIMAX_COLOR = "#9B59B6"
+ALPHA_BETA_COLOR = "#E74C3C"
+EXPECTIMAX_COLOR = "#1ABC9C"
 
-# UI Colors
-HEADER_BG = "#34495E"  # Dark blue-gray
+HEADER_BG = "#34495E"
 HEADER_FG = "white"
-BUTTON_BG = "#3498DB"  # Blue
+BUTTON_BG = "#3498DB"
 BUTTON_FG = "white"
-BUTTON_ACTIVE_BG = "#2980B9"  # Darker blue
-CANVAS_BG = "#ECF0F1"  # Very light gray
-FRAME_BG = "#F8F9FA"  # Off-white
+BUTTON_ACTIVE_BG = "#2980B9"
+CANVAS_BG = "#ECF0F1"
+FRAME_BG = "#F8F9FA"
 
 
 class InteractiveGrid:
@@ -39,11 +36,9 @@ class InteractiveGrid:
         self.root.title("Interactive Grid - Shape Formation Simulator")
         self.root.configure(bg=FRAME_BG)
 
-        # Add a title header with AI Assistant button
         title_frame = tk.Frame(root, bg=HEADER_BG, padx=10, pady=10)
         title_frame.pack(fill=tk.X)
 
-        # Create a container for the title and AI button
         title_container = tk.Frame(title_frame, bg=HEADER_BG)
         title_container.pack(fill=tk.X)
 
@@ -54,14 +49,12 @@ class InteractiveGrid:
                               fg=HEADER_FG)
         title_label.pack(side=tk.LEFT)
 
-        # Create the AI Assistant
         self.ai_assistant = AIAssistant(root)
 
-        # Add AI Assistant button
         ai_button_style = {
-            "bg": "#9B59B6",  # Purple
+            "bg": "#9B59B6",
             "fg": "white",
-            "activebackground": "#8E44AD",  # Darker purple
+            "activebackground": "#8E44AD",
             "relief": tk.RAISED,
             "padx": 10,
             "pady": 5,
@@ -73,45 +66,34 @@ class InteractiveGrid:
                                   **ai_button_style)
         self.ai_button.pack(side=tk.RIGHT, padx=10)
 
-        # Initialize speed_var first, before anything tries to use it
         self.speed_var = tk.IntVar(value=100)
 
-        # Set the movement speed from the speed_var
         self.movement_speed = self.speed_var.get()
 
-        # Add a trace to update movement_speed when speed_var changes
         self.speed_var.trace_add("write", self.update_movement_speed)
 
-        # Initialize grid size variable
         self.grid_size = DEFAULT_GRID_SIZE
         self.grid_size_var = tk.IntVar(value=self.grid_size)
 
-        # Initialize agent count variable
-        self.agent_count = 20  # Default number of agents
+        self.agent_count = 20
         self.agent_count_var = tk.IntVar(value=self.agent_count)
 
-        # Calculate cell size based on grid dimensions
         self.calculate_cell_size()
 
 
-        # Main container with modern styling
         main_frame = Frame(root, bg=FRAME_BG)
         main_frame.pack(padx=15, pady=15, fill=tk.BOTH, expand=True)
 
-        # Left frame for the grid with a border
         left_frame = Frame(main_frame, bg=HEADER_BG, bd=2, relief=tk.RIDGE)
         left_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
-        # Canvas for the grid with a nice background
         self.canvas = tk.Canvas(left_frame, width=MAX_CANVAS_SIZE, height=MAX_CANVAS_SIZE,
                               bg=CANVAS_BG, bd=0, highlightthickness=0)
         self.canvas.pack(padx=5, pady=5)
 
-        # Right frame for controls with a border and title
         right_outer_frame = Frame(main_frame, bg=FRAME_BG, bd=2, relief=tk.RIDGE)
         right_outer_frame.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.BOTH, expand=True)
 
-        # Add a control panel header
         control_header = Frame(right_outer_frame, bg=HEADER_BG, padx=5, pady=5)
         control_header.pack(fill=tk.X)
 
@@ -119,69 +101,53 @@ class InteractiveGrid:
                              font=("Arial", 12, "bold"), bg=HEADER_BG, fg=HEADER_FG)
         control_title.pack()
 
-        # Create a canvas with scrollbar for the controls
         control_canvas = tk.Canvas(right_outer_frame, bg=FRAME_BG, highlightthickness=0)
         control_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Add a scrollbar to the canvas
         control_scrollbar = tk.Scrollbar(right_outer_frame, orient=tk.VERTICAL, command=control_canvas.yview)
         control_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Configure the canvas to use the scrollbar
         control_canvas.configure(yscrollcommand=control_scrollbar.set)
 
-        # Inner frame for controls (this will be placed inside the canvas)
         right_frame = Frame(control_canvas, bg=FRAME_BG, padx=10, pady=10)
 
-        # Create a window in the canvas to hold the frame
         control_canvas_window = control_canvas.create_window((0, 0), window=right_frame, anchor=tk.NW)
 
-        # Configure the scrolling region when the frame changes size
-        def configure_scroll_region(event):  # event parameter is required by tkinter
+        def configure_scroll_region(event):
             control_canvas.configure(scrollregion=control_canvas.bbox("all"))
 
-        # Update the scrollable region when the size of the frame changes
         right_frame.bind("<Configure>", configure_scroll_region)
 
-        # Update the canvas's width when the frame changes width
         def configure_canvas_width(event):
             canvas_width = event.width
             control_canvas.itemconfig(control_canvas_window, width=canvas_width)
 
         control_canvas.bind("<Configure>", configure_canvas_width)
 
-        # Add mouse wheel scrolling
         def _on_mousewheel(event):
             control_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
-        # Bind mousewheel events
         control_canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
-        # Initialize data structures
         self.cells = {}
         self.active_cells = []
         self.reserved_cells = set()
         self.visited_cells = set()
 
-        # Custom shape variables
         self.custom_shape_mode = False
         self.custom_shape = []
 
-        #Movement Options
         self.moving_cells = {}
         self.movement_timer = None
 
-        # Create a single variable for movement mode
-        self.movement_mode_var = tk.StringVar(value="sequential")  # Default to sequential
+        self.movement_mode_var = tk.StringVar(value="sequential")
 
-        # Define the possible movement modes
         self.MOVEMENT_MODES = {
             "sequential": "Sequential",
             "parallel": "Parallel",
             "f1_safety_car": "F1 Safety Car Queue (Decentralized)"
         }
 
-        # For backward compatibility
         self.parallel_mode = False
         self.centralized_mode = False
         self.parallel_centralized_mode = False
@@ -190,17 +156,12 @@ class InteractiveGrid:
         self.max_attempts = 3
         self.step_counter = 0
 
-        # Agent Control Mode (centralized or distributed) - COMMENTED OUT FOR NOW
-        # self.centralized_mode = True  # Default to centralized control
-        # self.centralized_var = tk.BooleanVar(value=True)
-
-        # Performance metrics
         self.metrics = {
             "A*": {
                 "explored": 0, "path_length": 0, "time": 0, "moves": 0,
-                "success_rate": 0,  # Percentage of targets filled
-                "completed_targets": 0,  # Number of targets successfully filled
-                "total_targets": 0  # Total number of targets in the shape
+                "success_rate": 0,
+                "completed_targets": 0,
+                "total_targets": 0
             },
             "BFS": {
                 "explored": 0, "path_length": 0, "time": 0, "moves": 0,
@@ -240,90 +201,71 @@ class InteractiveGrid:
         self.cells_filled = 0
         self.start_time = 0
 
-        # Create controls
         self.create_controls(right_frame)
 
-        # Initialize the grid
         self.initialize_grid()
 
-        # Bind click events
         self.canvas.bind("<Button-1>", self.toggle_obstacle)
 
-        # Status
         self.movement_started = False
 
-        # Initialize the grid FIRST to create target_shape
         self.initialize_grid()
         self.layers = []
         self.current_layer = 0
         self.generate_layers()
         self.current_target = self.layers[self.current_layer] if self.layers else []
 
-        # Initialize MARL integration
         self.marl_integration = integrate_marl_with_app(self)
 
-        # Initialize Genetic Algorithm integration
         self.ga_planner = integrate_ga_with_app(self)
 
 
 
     def create_controls(self, parent):
         """Create UI controls."""
-        # Grid size controls
         grid_size_frame = Frame(parent)
         grid_size_frame.pack(pady=5, fill=tk.X)
 
         tk.Label(grid_size_frame, text="Grid Size:").pack(side=tk.LEFT)
 
-        # Create an entry field for grid size
         grid_size_entry = tk.Entry(grid_size_frame, textvariable=self.grid_size_var, width=5)
         grid_size_entry.pack(side=tk.LEFT, padx=5)
 
-        # Apply button for grid size changes with modern styling
         apply_size_btn = tk.Button(grid_size_frame, text="Apply", command=self.apply_grid_size,
                                   bg=BUTTON_BG, fg=BUTTON_FG, activebackground=BUTTON_ACTIVE_BG,
                                   relief=tk.RAISED, padx=10)
         apply_size_btn.pack(side=tk.LEFT, padx=5)
 
-        # Agent count controls
         agent_count_frame = Frame(parent)
         agent_count_frame.pack(pady=5, fill=tk.X)
 
         tk.Label(agent_count_frame, text="Agent Count:").pack(side=tk.LEFT)
 
-        # Create an entry field for agent count
         agent_count_entry = tk.Entry(agent_count_frame, textvariable=self.agent_count_var, width=5)
         agent_count_entry.pack(side=tk.LEFT, padx=5)
 
-        # Apply button for agent count changes with modern styling
         apply_agent_btn = tk.Button(agent_count_frame, text="Apply", command=self.apply_agent_count,
                                    bg=BUTTON_BG, fg=BUTTON_FG, activebackground=BUTTON_ACTIVE_BG,
                                    relief=tk.RAISED, padx=10)
         apply_agent_btn.pack(side=tk.LEFT, padx=5)
 
-        # Movement speed controls
         speed_frame = Frame(parent)
         speed_frame.pack(pady=5, fill=tk.X)
 
         tk.Label(speed_frame, text="Movement Speed:").pack(side=tk.LEFT)
 
-        # Create a scale (slider) for movement speed
-        # Lower values = faster movement (less delay)
         speed_scale = Scale(speed_frame, from_=10, to=500, orient=tk.HORIZONTAL,
                            variable=self.speed_var, length=150)
         speed_scale.pack(side=tk.LEFT, padx=5)
 
-        # Add labels for the speed range
         tk.Label(speed_frame, text="Fast").pack(side=tk.LEFT)
         tk.Label(speed_frame, text="Slow").pack(side=tk.RIGHT)
 
-        # Shape selection
         shape_frame = Frame(parent)
         shape_frame.pack(pady=5, fill=tk.X)
 
         tk.Label(shape_frame, text="Shape:").pack(side=tk.LEFT)
 
-        # Shape buttons with modern styling
         button_style = {
             "bg": BUTTON_BG,
             "fg": BUTTON_FG,
@@ -344,13 +286,11 @@ class InteractiveGrid:
         self.custom_btn = tk.Button(shape_frame, text="Custom Shape", command=self.start_custom_shape, **button_style)
         self.custom_btn.pack(side=tk.LEFT, padx=2)
 
-        # Create a finish button that will be hidden initially
         self.finish_custom_btn = tk.Button(shape_frame, text="Finish Custom Shape",
                                          command=self.finish_custom_shape, **button_style)
         self.finish_custom_btn.pack(side=tk.LEFT, padx=2)
-        self.finish_custom_btn.pack_forget()  # Hide initially
+        self.finish_custom_btn.pack_forget()
 
-        # Algorithm selection
         algo_frame = Frame(parent)
         algo_frame.pack(pady=5, fill=tk.X)
 
@@ -362,18 +302,15 @@ class InteractiveGrid:
         algo_menu.pack(side=tk.LEFT, padx=5)
         self.algorithm_var.trace_add("write", self.on_algorithm_change)
 
-        # Create a frame for movement options with a header
         movement_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
         movement_header.pack(fill=tk.X, pady=(10, 0))
 
         tk.Label(movement_header, text="Movement Mode", font=("Arial", 10, "bold"),
                 bg=HEADER_BG, fg=HEADER_FG).pack(anchor=tk.W)
 
-        # Create a frame for the radio buttons
         movement_options_frame = Frame(parent, bg=FRAME_BG)
         movement_options_frame.pack(pady=5, fill=tk.X)
 
-        # Create radio buttons for each movement mode
         for mode_key, mode_name in self.MOVEMENT_MODES.items():
             rb = tk.Radiobutton(
                 movement_options_frame,
@@ -385,7 +322,6 @@ class InteractiveGrid:
             )
             rb.pack(anchor=tk.W, padx=10, pady=2)
 
-        # Action buttons with section header
         action_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
         action_header.pack(fill=tk.X, pady=(10, 0))
 
@@ -395,7 +331,6 @@ class InteractiveGrid:
         btn_frame = Frame(parent, bg=FRAME_BG)
         btn_frame.pack(pady=5, fill=tk.X)
 
-        # Action buttons with modern styling
         action_style = button_style.copy()
         action_style["font"] = ("Arial", 10, "bold")
 
@@ -407,7 +342,6 @@ class InteractiveGrid:
                                   **action_style)
         self.reset_btn.pack(side=tk.LEFT, padx=5)
 
-        # Obstacles section with header
         obstacles_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
         obstacles_header.pack(fill=tk.X, pady=(10, 0))
 
@@ -417,7 +351,6 @@ class InteractiveGrid:
         obstacles_frame = Frame(parent, bg=FRAME_BG)
         obstacles_frame.pack(pady=5, fill=tk.X)
 
-        # Obstacle buttons with modern styling
         self.random_obstacles_button = tk.Button(obstacles_frame, text="Random Obstacles",
                                                command=self.add_random_obstacles, **button_style)
         self.random_obstacles_button.pack(side=tk.LEFT, padx=5)
@@ -426,7 +359,6 @@ class InteractiveGrid:
                                               command=self.clear_obstacles, **button_style)
         self.clear_obstacles_button.pack(side=tk.LEFT, padx=5)
 
-        # Status section with header
         status_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
         status_header.pack(fill=tk.X, pady=(10, 0))
 
@@ -441,7 +373,6 @@ class InteractiveGrid:
         self.status_text.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self.status_text.config(state=tk.DISABLED)
 
-        # Metrics section with header
         metrics_header = Frame(parent, bg=HEADER_BG, padx=5, pady=2)
         metrics_header.pack(fill=tk.X, pady=(10, 0))
 
@@ -458,14 +389,13 @@ class InteractiveGrid:
 
 
 
-        # Compare button with special styling
         compare_frame = Frame(parent, bg=FRAME_BG)
         compare_frame.pack(pady=10, fill=tk.X)
 
         compare_style = {
-            "bg": "#E74C3C",  # Red
+            "bg": "#E74C3C",
             "fg": "white",
-            "activebackground": "#C0392B",  # Darker red
+            "activebackground": "#C0392B",
             "relief": tk.RAISED,
             "padx": 10,
             "pady": 5,
