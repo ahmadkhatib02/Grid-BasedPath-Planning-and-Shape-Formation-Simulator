@@ -6,6 +6,8 @@ from collections import deque
 import random
 import time
 from AIAssistant import AIAssistant
+from Simple_MARL_Integration import integrate_marl_with_app, do_shape_with_marl
+from Simple_GA_Integration import integrate_ga_with_app, do_shape_with_ga
 
 # Grid settings
 DEFAULT_GRID_SIZE = 10  # Default grid size
@@ -256,6 +258,12 @@ class InteractiveGrid:
         self.current_layer = 0
         self.generate_layers()
         self.current_target = self.layers[self.current_layer] if self.layers else []
+
+        # Initialize MARL integration
+        self.marl_integration = integrate_marl_with_app(self)
+
+        # Initialize Genetic Algorithm integration
+        self.ga_planner = integrate_ga_with_app(self)
 
 
 
@@ -1279,6 +1287,36 @@ class InteractiveGrid:
         self.parallel_mode = (movement_mode == "parallel")
         self.centralized_mode = False  # No longer using sequential_centralized
         self.parallel_centralized_mode = (movement_mode == "f1_safety_car")
+
+        # Check if we should use MARL for parallel movement
+        if hasattr(self, 'marl_integration') and self.marl_integration:
+            # Check if marl_integration is a dictionary (Simple_MARL_Integration)
+            if isinstance(self.marl_integration, dict) and self.marl_integration.get('marl') is not None:
+                # Use MARL for parallel movement (Simple_MARL_Integration)
+                self.update_status("Using MARL for parallel decentralized movement")
+                do_shape_with_marl(self)
+                return
+            # Check if marl_integration is an object with marl attribute (MARL_Integration_For_Parallel)
+            elif hasattr(self.marl_integration, 'marl') and self.marl_integration.marl is not None:
+                # Use MARL for parallel movement (MARL_Integration_For_Parallel)
+                self.update_status("Using MARL for parallel movement")
+                self.marl_integration.do_shape_with_marl(self)
+                return
+
+        # Check if we should use GA for movement
+        if hasattr(self, 'ga_planner') and self.ga_planner:
+            # Check if ga_planner is a dictionary (Simple_GA_Integration)
+            if isinstance(self.ga_planner, dict) and self.ga_planner.get('ga') is not None:
+                # Use GA for movement (Simple_GA_Integration)
+                self.update_status("Using Genetic Algorithm for movement")
+                do_shape_with_ga(self)
+                return
+            # Check if ga_planner is an object (GeneticAlgorithmIntegration)
+            elif hasattr(self.ga_planner, 'ga') and self.ga_planner.ga is not None:
+                # Use GA for movement (GeneticAlgorithmIntegration)
+                self.update_status("Using Genetic Algorithm for movement")
+                self.ga_planner.do_shape_with_ga()
+                return
 
         # Start the appropriate movement process based on the selected mode
         if movement_mode == "f1_safety_car":
